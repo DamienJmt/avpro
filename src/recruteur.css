@@ -1,0 +1,14 @@
+/* Ajouts propres à l'espace recruteur. design.css, beta.css et v2.css sont des copies de l'app candidat. */
+.card .exp { display: grid; gap: var(--s2); margin: 0; padding: 0; list-style: none; }
+.panneau ul.liste { margin: 0; padding-left: var(--s5); font-size: var(--t-sm); color: var(--ink-2); }
+.panneau ul.liste li { margin-bottom: var(--s2); }
+.mtags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--s2); }
+.mtags span { font-size: var(--t-xs); background: var(--surface-2); color: var(--ink-2); border-radius: var(--r-sm); padding: 3px 8px; }
+.detail { margin: var(--s3) 0 0; font-size: var(--t-sm); color: var(--ink-2); line-height: 1.6; }
+.tile.entretien .duo { margin-bottom: var(--s3); }
+.tile.entretien .duo .pastille svg { width: 22px; height: 22px; }
+.tile .quand { font-size: var(--t-xs); color: var(--ink-3); margin-top: 4px; display: block; }
+.tile.entretien .actes { margin-top: var(--s3); }
+.tile.entretien .actes button { min-height: 36px; padding: 0 var(--s3); border-radius: var(--r-sm); border: 1px solid var(--line);
+  background: var(--surface); color: var(--no); font-size: var(--t-xs); font-weight: 600; }
+.sheet .pform { margin-bottom: var(--s4); }

@@ -1,0 +1,71 @@
+/* Styles ajoutés le 21/09 : filtres et recherche du deck, mes CV. Tout passe
+   par les jetons du thème. */
+
+/* --- filtres et recherche du deck ---------------------------------------- */
+.filtres-avp { align-items: center; }
+.filtres-avp .recherche { flex: none; min-width: 210px; max-width: 320px; min-height: 38px; border: 1px solid var(--line);
+  border-radius: var(--r-full); padding: 0 var(--s4); font: inherit; font-size: var(--t-sm); background: var(--surface);
+  color: var(--ink); scroll-snap-align: start; }
+.filtres-avp .recherche:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
+.card.close .hero { background: var(--surface-2); }
+.badge-pass.close { background: var(--surface-2); color: var(--ink-2); border-color: var(--line); }
+.missions { margin: 0; padding-left: var(--s5); font-size: var(--t-sm); color: var(--ink-2); }
+.missions li { margin-bottom: var(--s2); }
+.missions.ecarts li { color: var(--no); }
+
+/* --- actions de liste : liens comme des boutons --------------------------- */
+.item .actes a { min-height: 36px; padding: 0 var(--s3); border-radius: var(--r-sm); border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink-2); font-size: var(--t-xs); font-weight: 600; display: inline-flex;
+  align-items: center; text-decoration: none; }
+.item .actes a.fort { border-color: var(--brand); color: var(--brand); }
+.etat.refus { background: color-mix(in srgb, var(--no) 14%, transparent); color: var(--no); }
+
+/* --- mes CV --------------------------------------------------------------- */
+.mescv { margin-top: var(--s3); }
+.mescv-actions { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; margin-top: var(--s2); }
+.mescv-actions a.btn-mini { text-decoration: none; display: inline-flex; align-items: center; }
+.mescv-liste { list-style: none; margin: var(--s3) 0 0; padding: 0; display: grid; gap: var(--s2); }
+.mescv-liste li { display: flex; justify-content: space-between; gap: var(--s3); align-items: center;
+  border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--s2) var(--s3); font-size: var(--t-sm); }
+.mescv-liste li.on { border-color: var(--brand); }
+.mescv-liste li b { display: block; font-weight: 600; }
+.mescv-liste li em { font-style: normal; color: var(--ink-3); font-size: var(--t-xs); }
+.mescv-btns { display: flex; gap: var(--s1); flex-wrap: wrap; justify-content: flex-end; }
+.mescv-btns a { text-decoration: none; }
+.mescv-json { font-size: 11px; background: var(--surface-2); border-radius: var(--r-sm); padding: var(--s3);
+  max-height: 280px; overflow: auto; margin: var(--s3) 0 0; white-space: pre-wrap; word-break: break-word; }
+
+/* Deux champs sur une ligne (prénom / nom à l'inscription), une colonne dès
+   que la place manque : deux champs de 3 cm ne se remplissent pas. */
+.pdeux { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+@media (max-width: 420px) { .pdeux { grid-template-columns: 1fr; } }
+
+/* --- mon compte (dans le profil) ----------------------------------------
+   L'adresse et le mot de passe vivent chez l'equipe : ce bloc dit ou ils sont
+   et, quand leur service le permet, ouvre le formulaire qui va bien. */
+/* La barre des etapes suit juste en dessous : sans marge basse, la carte la
+   touchait, et deux blocs colles se lisent comme un seul. */
+.mcompte { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+  padding: var(--s4); margin: var(--s4) 0 var(--s6); }
+.mcompte h3 { font-size: var(--t-md); margin: 0 0 var(--s3); }
+.mc-ligne { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; margin: 0 0 var(--s3); }
+.mc-ligne dt { font-size: var(--t-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); font-weight: 600; }
+.mc-ligne dd { margin: 0; font-size: var(--t-sm); word-break: break-all; }
+.mc-actions { display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center; margin-top: var(--s3); }
+.mc-form { margin-top: var(--s4); gap: var(--s4); max-width: 420px; }
+
+/* --- navigation à trois onglets ------------------------------------------ */
+.nav.n3 { grid-template-columns: repeat(3, 1fr); }
+@media (min-width: 720px) {
+  .nav.n3 { grid-template-columns: 1fr; }
+}
+
+/* Deux pastilles d’état côte à côte (statut + écarts) respirent. */
+.etat + .etat { margin-left: 6px; }
+
+/* Le qualificatif d'une puce : « Direction » devant un libelle qui existe
+   aussi comme famille de metiers. Discret, mais il leve l'ambiguite entre
+   deux boutons au meme nom et aux comptes differents. */
+.chip .pre { font-style: normal; font-weight: 600; font-size: var(--t-xs);
+  color: var(--ink-3); margin-right: 6px; }
+.chip[aria-pressed="true"] .pre { color: inherit; opacity: .75; }
