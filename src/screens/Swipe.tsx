@@ -1,10 +1,14 @@
 import { useRef, useState } from "react";
+import { api } from "../api";
+import { ErreurApi } from "../types";
 import type { Avp, Candidat, Candidature } from "../types";
-import { evalue, type Evaluation, type Part } from "../scoring";
-import { conf, find, Icone, nom, teinte, type Ctx } from "./shared";
+import { demandee, evalue, type Evaluation, type Part } from "../scoring";
+import { conf, find, Icone, nom, Spinner, teinte, type Ctx } from "./shared";
 
 const SEUIL = 90;
 const mois = (d: string) => new Date(`${d}-01`).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+const periode = (d: string, f: string) => (d ? (f ? `${d} – ${f}` : `depuis ${d}`) : f);
+const NIVEAUX: Record<number, string> = { 1: "Bac", 2: "Bac+2", 3: "Bac+3", 4: "Bac+5" };
 
 function Jauges({ parts }: { parts: Part[] }) {
   return (
@@ -23,21 +27,48 @@ function Jauges({ parts }: { parts: Part[] }) {
   );
 }
 
+/** Ouvre le CV déposé par le candidat dans un nouvel onglet. */
+function BoutonCv({ c }: { c: Candidat }) {
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  if (!c.aCv) return null;
+  const ouvre = async () => {
+    // L'onglet s'ouvre tout de suite (sinon le navigateur le bloque), le fichier arrive ensuite.
+    const fen = window.open("", "_blank");
+    setEnvoi(true); setErreur(null);
+    try {
+      const u = await api.urlFichierCv(c.id);
+      if (fen) fen.location.href = u; else window.location.href = u;
+    } catch (e) {
+      fen?.close();
+      setErreur(e instanceof ErreurApi ? e.message : "Le CV n'a pas pu être ouvert.");
+    } finally {
+      setEnvoi(false);
+    }
+  };
+  return (
+    <p style={{ margin: "var(--s2) 0 0" }}>
+      <button className="btn-mini" onClick={() => void ouvre()} disabled={envoi}>{envoi ? <><Spinner /> Ouverture…</> : "Voir le CV déposé"}</button>
+      {erreur && <span className="etat refus" style={{ marginLeft: "var(--s2)" }}>{erreur}</span>}
+    </p>
+  );
+}
+
 /* Panneau de détail : même ossature que celui de l'app candidat, côté employeur. */
 function Detail({ c, a, e }: { c: Candidat; a: Avp; e: Evaluation }) {
   return (
     <>
       <div className="col-p">
         <div className="titre">{nom(c)}</div>
-        <div className="org">{c.titre} · {c.ville} · candidat au poste « {a.titre} » · réf. {a.reference}</div>
+        <div className="org">{[c.titre, c.ville].filter(Boolean).join(" · ")}{c.titre || c.ville ? " · " : ""}candidat au poste « {a.titre} » · réf. {a.reference}</div>
+        <BoutonCv c={c} />
+        {!c.aProfil && <p className="pa" style={{ marginTop: "var(--s3)" }}>Ce candidat n’a pas encore rempli son profil : le score ne peut rien mesurer.</p>}
         <h3>Ce que tu recherches</h3>
         <Jauges parts={e.poste} />
         <h3>Ce que le candidat recherche</h3>
         <Jauges parts={e.candidat} />
-        <h3>Les compétences, en détail</h3>
-        <Jauges parts={[{ cle: `Attendues (${e.ok.length}/${a.competencesRequises.length})`, v: e.vComp }]} />
         <p style={{ fontSize: "var(--t-xs)", color: "var(--ink-3)", margin: "var(--s3) 0 0" }}>
-          Compatibilité {e.score} % — le plus faible des deux côtés, jamais la moyenne.
+          {e.score === null ? "Compatibilité inconnue : aucun critère mesurable." : `Compatibilité ${e.score} % — le plus faible des deux côtés, jamais la moyenne.`}{" "}
           Confiance {conf(e.confiance)}, {e.confiance} % des critères renseignés.
         </p>
       </div>
@@ -52,13 +83,27 @@ function Detail({ c, a, e }: { c: Candidat; a: Avp; e: Evaluation }) {
         {e.non.length > 0 && (<>
           <b style={{ color: "var(--no)", fontSize: "var(--t-sm)" }}>Ne colle pas avec ses critères — tu peux le retenir quand même</b>
           <ul className="liste">{e.non.map((x) => <li key={x}>{x}</li>)}</ul></>)}
+        {a.competences.length > 0 && (<>
+          <h3>Ce que l’AVP demande ({e.ok.length}/{a.competences.length} chez le candidat)</h3>
+          <ul className="liste competences">
+            {a.competences.map((x) => <li key={x} className={e.ok.includes(x) ? "has" : undefined}>{x}</li>)}
+          </ul>
+        </>)}
         <h3>Le parcours</h3>
-        <ul className="liste">
-          {c.experiences.map((x, i) => <li key={i}><b>{x.poste}</b>, {x.employeur} ({x.duree})</li>)}
-          {c.formations.map((x, i) => <li key={`f${i}`}><b>{x.diplome}</b>, {x.etablissement}</li>)}
-        </ul>
-        <h3>Le poste</h3>
-        <p style={{ fontSize: "var(--t-sm)", color: "var(--ink-2)", margin: 0 }}>{a.description}</p>
+        {c.experiences.length + c.formations.length === 0
+          ? <p className="pa">Aucune expérience ni formation renseignée.</p>
+          : <ul className="liste">
+              {c.experiences.map((x, i) => <li key={i}><b>{x.poste}</b>{x.employeur && `, ${x.employeur}`}{(x.debut || x.fin) ? ` (${periode(x.debut, x.fin)})` : x.annees !== null ? ` (${x.annees} an${x.annees > 1 ? "s" : ""})` : ""}</li>)}
+              {c.formations.map((x, i) => <li key={`f${i}`}><b>{x.diplome || x.domaine}</b>{x.diplome && x.domaine && `, ${x.domaine}`}{x.etablissement && ` · ${x.etablissement}`}</li>)}
+            </ul>}
+        {(c.email || c.telephone) && (<>
+          <h3>Contact</h3>
+          <p style={{ fontSize: "var(--t-sm)", color: "var(--ink-2)", margin: 0 }}>{[c.email, c.telephone].filter(Boolean).join(" · ")}</p>
+        </>)}
+        {a.description && (<>
+          <h3>Le poste</h3>
+          <p style={{ fontSize: "var(--t-sm)", color: "var(--ink-2)", margin: 0 }}>{a.description}</p>
+        </>)}
       </div>
     </>
   );
@@ -71,34 +116,55 @@ interface CarteProps {
 
 function Carte({ c, a, profondeur, peutRevenir, onDecide, onRetour, onDetail }: CarteProps) {
   const e = evalue(c, a);
+  /* Le glissé, comme l'app candidat : la capture du pointeur n'est prise
+     qu'après un vrai mouvement horizontal, sinon elle détourne le clic des boutons. */
+  const depart = useRef<{ x: number; y: number } | null>(null);
+  const capture = useRef(false);
   const [dx, setDx] = useState(0);
   const [lache, setLache] = useState(false);
-  const [sortie, setSortie] = useState(0);
-  const x0 = useRef<number | null>(null);
-  const aGlisse = useRef(false);
+  const [sortie, setSortie] = useState<0 | 1 | -1>(0);
+  const jouable = profondeur === 0;
 
   const decide = (ok: boolean) => {
     if (sortie) return;
     setSortie(ok ? 1 : -1);
     window.setTimeout(() => onDecide?.(ok), 160);
   };
+  const debut = (ev: React.PointerEvent) => {
+    if (!jouable) return;
+    depart.current = { x: ev.clientX, y: ev.clientY };
+    capture.current = false;
+    setLache(false);
+  };
+  const bouge = (ev: React.PointerEvent) => {
+    if (!depart.current) return;
+    const d = ev.clientX - depart.current.x;
+    if (!capture.current) {
+      if (Math.abs(d) < 6 || Math.abs(ev.clientY - depart.current.y) > Math.abs(d)) return;
+      capture.current = true;
+      (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+    }
+    setDx(d);
+  };
   const fin = () => {
-    if (x0.current === null) return;
-    x0.current = null; setLache(true);
-    if (Math.abs(dx) > SEUIL) decide(dx > 0); else setDx(0);
+    if (!depart.current) return;
+    const aGlisse = capture.current;
+    depart.current = null; capture.current = false; setLache(true);
+    if (aGlisse && Math.abs(dx) > SEUIL) decide(dx > 0); else setDx(0);
   };
   const transform = sortie ? `translateX(${sortie * 700}px) rotate(${sortie * 22}deg)`
     : dx ? `translateX(${dx}px) rotate(${dx / 22}deg)` : `translateY(${profondeur * 8}px) scale(${1 - profondeur * 0.03})`;
   const stop = (ev: React.PointerEvent) => ev.stopPropagation();
 
-  const dispo = c.disponibilite ? `dispo dès ${mois(c.disponibilite)}` : "disponibilité inconnue";
+  const autres = c.competences.filter((x) => !demandee(x, a));
+  const vise = e.candidat.find((p) => p.cle === "Métier visé")?.v === 100;
+  const zone = e.candidat.find((p) => p.cle === "Lieu")?.v === 100;
   return (
     <article className="card" aria-hidden={profondeur > 0 || undefined} inert={profondeur > 0}
       style={{ transform, zIndex: 10 - profondeur, transition: lache ? "transform .22s var(--ease)" : undefined,
         touchAction: "pan-y", pointerEvents: profondeur > 0 ? "none" : undefined }}
-      onPointerDown={(ev) => { x0.current = ev.clientX; aGlisse.current = false; setLache(false); ev.currentTarget.setPointerCapture(ev.pointerId); }}
-      onPointerMove={(ev) => { if (x0.current !== null) { setDx(ev.clientX - x0.current); aGlisse.current = true; } }}
-      onPointerUp={fin} onPointerCancel={fin}>
+      onPointerDown={debut} onPointerMove={bouge} onPointerUp={fin} onPointerCancel={fin}>
+      <span className={`teinte ${dx > 0 ? "oui" : "non"}`} aria-hidden="true" style={{ opacity: Math.min(1, Math.abs(dx) / SEUIL) }} />
       <span className="stamp yes" style={{ opacity: Math.max(0, Math.min(1, dx / SEUIL)) }}>OUI</span>
       <span className="stamp no" style={{ opacity: Math.max(0, Math.min(1, -dx / SEUIL)) }}>NON</span>
       <div className="stage">
@@ -106,70 +172,90 @@ function Carte({ c, a, profondeur, peutRevenir, onDecide, onRetour, onDetail }: 
           <div className="hero-top">
             <button type="button" className="score score-btn" onPointerDown={stop}
               onClick={(ev) => { ev.stopPropagation(); onDetail?.(); }} aria-label="Voir le détail du score">
-              <span className="gauge"><b style={{ width: `${e.score}%`, background: teinte(e.score) }} /></span>
-              <span className="v" style={{ color: teinte(e.score) }}>{e.score} %</span> compatible
+              {e.score === null
+                ? <><span className="gauge" /><span className="v">?</span> compatibilité inconnue</>
+                : <><span className="gauge"><b style={{ width: `${e.score}%`, background: teinte(e.score) }} /></span>
+                    <span className="v" style={{ color: teinte(e.score) }}>{e.score} %</span> compatible</>}
             </button>
             {e.non.length > 0 && <span className="badge-pass">hors de ses critères</span>}
           </div>
-          <div className="conf">confiance {conf(e.confiance)} · {e.confiance} % des critères renseignés
-            {e.manque.length > 0 && <> · <b style={{ color: "var(--no)" }}>{e.manque.length} compétence{e.manque.length > 1 ? "s" : ""} manquante{e.manque.length > 1 ? "s" : ""}</b></>}
-          </div>
+          <div className="conf">confiance {conf(e.confiance)} · {e.confiance} % des critères renseignés</div>
           <h2 className="role">{nom(c)}</h2>
-          <div className="org">{c.titre} · {c.ville}</div>
+          <div className="org">{[c.titre, c.ville].filter(Boolean).join(" · ") || c.email}</div>
+          <div className="cles">
+            <span className="cle">{c.experienceAnnees === null ? "expérience inconnue" : `${c.experienceAnnees} an${c.experienceAnnees > 1 ? "s" : ""} d’expérience`}</span>
+            {c.niveauFormation && <span className="cle">{NIVEAUX[c.niveauFormation]}</span>}
+            <span className="cle">{c.disponibilite ? `dispo dès ${mois(c.disponibilite)}` : "disponibilité inconnue"}</span>
+            {vise && <span className="cle moi">Vise ce métier</span>}
+            {zone && <span className="cle moi">Dans sa zone</span>}
+          </div>
         </div>
         <div className="pagebox">
-          <div className="page-lead">Compétences vs AVP</div>
-          <div className="tags">
-            {e.ok.map((x) => <span key={x} className="has">{x}</span>)}
-            {c.competences.filter((x) => !e.ok.some((o) => o.toLowerCase() === x.toLowerCase())).map((x) => <span key={x}>{x}</span>)}
-            {e.manque.map((x) => <span key={x} className="miss">{x} ?</span>)}
+          <div className="page-lead">
+            {a.competences.length ? `Compétences · ${e.ok.length}/${a.competences.length} attendues par l’AVP` : "Compétences"}
+          </div>
+          <div className="page-body">
+            <div className="tags">
+              {c.competences.length === 0 && <span className="doux">Aucune compétence renseignée</span>}
+              {c.competences.filter((x) => !autres.includes(x)).map((x) => <span key={x} className="has">{x}</span>)}
+              {autres.map((x) => <span key={x}>{x}</span>)}
+            </div>
           </div>
         </div>
       </div>
       <div className="facts">
-        <div className="line"><em>{c.ville}</em> <span className="dot" /> {dispo}</div>
         <div className="line">
-          <em>{c.experienceAnnees === null ? "expérience inconnue" : `${c.experienceAnnees} an${c.experienceAnnees > 1 ? "s" : ""} d’expérience`}</em>
-          {c.formations[0] && <> <span className="dot" /> {c.formations[0].diplome}</>}
-        </div>
-        <div className="line">
-          <em>{c.salaireMin ? `${Math.round(c.salaireMin / 1000)} k XPF min.` : "prétentions non annoncées"}</em>
-          <span className="dot" /> {a.titre} <span className="dot" /> réf. {a.reference}
+          <span>{a.titre}</span>
+          <span>réf. {a.reference}</span>
+          <span>{c.zonesVisees.length ? c.zonesVisees.join(", ") : "zones non renseignées"}</span>
+          {c.salaireMin ? <em>{Math.round(c.salaireMin / 1000)} k XPF min.</em> : null}
         </div>
       </div>
-      <div className="coins" onPointerDown={stop}>
-        <button type="button" className="retour" disabled={!peutRevenir} onClick={(ev) => { ev.stopPropagation(); onRetour?.(); }}
-          aria-label="Revenir sur la dernière décision"><Icone n="undo" /></button>
-        <button type="button" className="non" onClick={(ev) => { ev.stopPropagation(); decide(false); }} aria-label="Rejeter"><Icone n="x" /></button>
-        <button type="button" className="oui" onClick={(ev) => { ev.stopPropagation(); decide(true); }} aria-label="Présélectionner"><Icone n="check" /></button>
-      </div>
+      {jouable && (
+        <div className="coins" onPointerDown={stop}>
+          <div className="coin">
+            <button type="button" className="retour" disabled={!peutRevenir} onClick={(ev) => { ev.stopPropagation(); onRetour?.(); }}
+              aria-label="Annuler la dernière décision (avant son envoi)"><Icone n="undo" /></button>
+            <span>Retour</span>
+          </div>
+          <div className="coin">
+            <button type="button" className="non" onClick={(ev) => { ev.stopPropagation(); decide(false); }} aria-label="Écarter"><Icone n="x" /></button>
+            <span>Écarter</span>
+          </div>
+          <div className="coin">
+            <button type="button" className="oui" onClick={(ev) => { ev.stopPropagation(); decide(true); }} aria-label="Présélectionner"><Icone n="check" /></button>
+            <span>Présélectionner</span>
+          </div>
+        </div>
+      )}
     </article>
   );
 }
 
-export default function Swipe({ candidatures, candidats, avp, maj }: Ctx) {
-  const [filtre, setFiltre] = useState("tous");
+export default function Swipe({ candidatures, candidats, avp, attente, decider, annuler }: Ctx) {
+  const [filtre, setFiltre] = useState<number | null>(null);
   const [recherche, setRecherche] = useState("");
-  const [dernier, setDernier] = useState<string | null>(null);
   const [feuille, setFeuille] = useState(false);
 
   const atraiter = candidatures.filter((k) => k.statut === "a_traiter");
   const q = recherche.trim().toLowerCase();
+  // Une candidature dont l'AVP ou le candidat manque ne peut pas faire de carte : elle reste dans l'onglet Candidats.
   const pile = atraiter.filter((k) => {
     const c = find(candidats, k.candidatId);
-    return (filtre === "tous" || k.avpId === filtre) && (!q || `${c ? nom(c) : ""} ${c?.titre ?? ""}`.toLowerCase().includes(q));
+    return c && find(avp, k.avpId) && (filtre === null || k.avpId === filtre) && (!q || `${nom(c)} ${c.titre ?? ""}`.toLowerCase().includes(q));
   });
   const [courante, suivante] = pile;
   const cc = courante && find(candidats, courante.candidatId);
   const ca = courante && find(avp, courante.avpId);
+  // Seuls les postes qui ont des candidatures à traiter ont une puce.
+  const postes = avp.filter((a) => a.id === filtre || atraiter.some((k) => k.avpId === a.id));
+  const derniere = attente[attente.length - 1];
 
-  const decide = (ok: boolean) => { if (courante) { maj(courante.id, ok ? "preselectionne" : "rejete"); setDernier(courante.id); } };
-  const reviens = () => { if (dernier) { maj(dernier, "a_traiter"); setDernier(null); } };
   const rendu = (k: Candidature, profondeur: number) => {
     const c = find(candidats, k.candidatId), a = find(avp, k.avpId);
     return c && a ? (
-      <Carte key={k.id} k={k} c={c} a={a} profondeur={profondeur} peutRevenir={Boolean(dernier)}
-        onDecide={decide} onRetour={reviens} onDetail={() => setFeuille(true)} />
+      <Carte key={k.id} k={k} c={c} a={a} profondeur={profondeur} peutRevenir={Boolean(derniere)}
+        onDecide={(ok) => decider(k.id, ok)} onRetour={() => derniere && annuler(derniere.id)} onDetail={() => setFeuille(true)} />
     ) : null;
   };
 
@@ -178,10 +264,10 @@ export default function Swipe({ candidatures, candidats, avp, maj }: Ctx) {
       <div className="filters filtres-avp">
         <input type="search" className="recherche" value={recherche} placeholder="Chercher un candidat, un métier…"
           onChange={(e) => setRecherche(e.target.value)} aria-label="Rechercher parmi les candidats" />
-        <button className="chip" aria-pressed={filtre === "tous"} onClick={() => setFiltre("tous")}>
+        <button className="chip" aria-pressed={filtre === null} onClick={() => setFiltre(null)}>
           Tous les postes <span className="cpt">{atraiter.length}</span>
         </button>
-        {avp.map((a) => (
+        {postes.map((a) => (
           <button key={a.id} className="chip" aria-pressed={filtre === a.id} onClick={() => setFiltre(a.id)}>
             {a.titre} <span className="cpt">{atraiter.filter((k) => k.avpId === a.id).length}</span>
           </button>
