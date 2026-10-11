@@ -1,22 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { ErreurApi } from "./types";
-import type { Avp, Candidat, Candidature, Employeur, Recruteur, Statut } from "./types";
+import type { Avp, Candidat, Candidature, Recruteur, Statut } from "./types";
 import Connexion from "./screens/Connexion";
 import Swipe from "./screens/Swipe";
 import AvpList from "./screens/AvpList";
 import Candidats from "./screens/Candidats";
 import Entretiens from "./screens/Entretiens";
 import Profil from "./screens/Profil";
+import Statistiques from "./screens/Statistiques";
 import Confirmer from "./screens/Confirmer";
 import { find, Icone, nom, Spinner, useSecondes, type EnAttente } from "./screens/shared";
 
-type Onglet = "swipe" | "avp" | "candidats" | "entretiens" | "profil";
+type Onglet = "swipe" | "avp" | "candidats" | "entretiens" | "stats" | "profil";
 const ONGLETS: { cle: Onglet; icone: string; nom: string }[] = [
   { cle: "swipe", icone: "swipe", nom: "Swipe" },
   { cle: "avp", icone: "briefcase", nom: "AVP" },
   { cle: "candidats", icone: "users", nom: "Candidats" },
   { cle: "entretiens", icone: "calendar", nom: "Entretiens" },
+  { cle: "stats", icone: "chart", nom: "Statistiques" },
   { cle: "profil", icone: "user", nom: "Profil" },
 ];
 
@@ -35,7 +37,6 @@ export default function App() {
   const [candidatures, setCandidatures] = useState<Candidature[]>([]);
   const [attente, setAttente] = useState<EnAttente[]>([]);
   const [aConfirmer, setAConfirmer] = useState<number | null>(null);
-  const [employeur, setEmployeur] = useState<Employeur>(() => api.employeur());
   const minuteurs = useRef(new Map<number, { t: number; ok: boolean }>());
 
   const charge = useCallback(async () => {
@@ -53,7 +54,6 @@ export default function App() {
 
   useEffect(() => {
     if (!moi) return;
-    setEmployeur(api.employeur());
     void charge();
   }, [moi, charge]);
 
@@ -132,13 +132,13 @@ export default function App() {
     setOnglet("swipe");
   };
 
-  const valideEntretien = async (id: number) => {
-    await api.valideEntretien(id);
-    maj(id, "entretien");
-  };
-  const retireEntretien = async (id: number) => {
-    await api.annuleEntretien(id);
-    maj(id, "preselectionne");
+  const entretien = async (id: number, aProgrammer: boolean) => {
+    try {
+      const k = await api.entretien(id, aProgrammer);
+      setCandidatures((l) => l.map((c) => (c.id === id ? k : c)));
+    } catch (e) {
+      setAlerte(e instanceof ErreurApi ? e.message : "L'entretien n'a pas pu être enregistré.");
+    }
   };
 
   if (!moi) return <>{alerte && <Alerte texte={alerte} onFerme={() => setAlerte(null)} />}<Connexion onEntre={(r) => { setAlerte(null); setMoi(r); }} /></>;
@@ -174,16 +174,14 @@ export default function App() {
           {onglet === "swipe" && <Swipe {...ctx} />}
           {onglet === "avp" && <AvpList {...ctx} />}
           {onglet === "candidats" && <Candidats {...ctx} />}
-          {onglet === "entretiens" && <Entretiens {...ctx} retirer={(id) => void retireEntretien(id)} />}
-          {onglet === "profil" && (
-            <Profil moi={moi} employeur={employeur}
-              onChange={(e) => { api.enregistreEmployeur(e); setEmployeur(e); }} />
-          )}
+          {onglet === "entretiens" && <Entretiens {...ctx} retirer={(id) => void entretien(id, false)} />}
+          {onglet === "stats" && <Statistiques />}
+          {onglet === "profil" && <Profil moi={moi} />}
         </>)}
         {k && (
           <Confirmer candidat={find(candidats, k.candidatId)} avp={find(avp, k.avpId)}
             onFerme={() => setAConfirmer(null)}
-            onValide={() => { void valideEntretien(k.id); setAConfirmer(null); setOnglet("entretiens"); }} />
+            onValide={() => { void entretien(k.id, true); setAConfirmer(null); setOnglet("entretiens"); }} />
         )}
       </div>
 

@@ -23,7 +23,8 @@ export interface Candidat {
   id: number; prenom: string; nom: string; email: string; telephone: string | null;
   titre: string | null; ville: string | null;
   competences: string[];
-  experiences: { poste: string; employeur: string; debut: string; fin: string }[];
+  /** debut/fin « 2022-09 » (format de l'app candidat), ou seulement une durée en années (format court). */
+  experiences: { poste: string; employeur: string; debut: string; fin: string; annees: number | null }[];
   formations: { diplome: string; domaine: string; etablissement: string }[];
   // Critères du candidat (meta.criteres de son CV JSON) ; null ou liste vide = non renseigné (affiché « inconnu »).
   experienceAnnees: number | null;
@@ -45,8 +46,6 @@ export interface Candidature {
   /** Dernier changement, ISO. */
   depuis: string;
 }
-
-export interface Employeur { organisme: string; contact: string; email: string; telephone: string }
 
 export interface Recruteur { id: number; email: string }
 

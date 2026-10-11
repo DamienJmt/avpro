@@ -3,17 +3,15 @@
    Même principe que beta/src/api.ts côté candidat : les écrans ne connaissent
    que les formes de types.ts, les réponses de l'API sont traduites ici.
 
-   Ce qui vit dans le navigateur, et seulement là :
-   - la session (leur jeton, 1 h, sans renouvellement), en sessionStorage ;
-   - les entretiens validés, tant que l'API n'a pas de statut ENTRETIEN ;
-   - les coordonnées de l'employeur, que l'API ne connaît pas.
+   Seule la session vit dans le navigateur : leur jeton, 1 h, sans
+   renouvellement, en sessionStorage.
 
    Leur serveur n'envoie pas d'en-têtes CORS : en développement, Vite relaie
    /api-equipe vers eux (vite.config.ts). En production, il faudra un relais
    du même genre, ou VITE_API_URL le jour où ils ouvriront CORS. */
 
 import { ErreurApi } from "./types";
-import type { Avp, Candidat, Candidature, Employeur, Recruteur, Statut } from "./types";
+import type { Avp, Candidat, Candidature, Recruteur, Statut } from "./types";
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api-equipe";
 
@@ -79,11 +77,11 @@ interface Options {
 }
 
 const MESSAGES: Record<number, string> = {
-  400: "La demande a été refusée par l'API.",
+  400: "La demande a été refusée.",
   403: "Ce compte n'a pas accès à cette action : il faut un compte recruteur.",
   404: "Introuvable.",
-  502: "L'API de l'équipe ne répond pas. Réessaie dans un instant.",
-  503: "L'API de l'équipe ne répond pas. Réessaie dans un instant.",
+  502: "Le serveur ne répond pas. Réessaie dans un instant.",
+  503: "Le serveur ne répond pas. Réessaie dans un instant.",
 };
 
 function url(chemin: string, query?: Options["query"]): string {
@@ -215,18 +213,19 @@ function avpDepuisEquipe(a: AvpEquipe): Avp {
 interface UserEquipe { id: number; nom?: string | null; prenom?: string | null; email?: string | null; role?: string | null }
 interface CandidatureEquipe {
   id: number; candidat?: UserEquipe | null; avpId: number; avpReference?: string | null; avpTitre?: string | null;
-  statut: string; createdAt: string; updatedAt?: string | null;
+  statut: string; entretienAProg?: boolean | null; createdAt: string; updatedAt?: string | null;
 }
 interface ProfilEquipe { candidat: UserEquipe; cv?: unknown; cvDocument?: string | null }
 
-/* ENTRETIEN n'existe pas encore dans l'API : il est déjà lu s'il arrive. */
 const STATUTS: Record<string, Statut> = {
-  EN_ATTENTE: "a_traiter", VALIDEE: "preselectionne", REJETEE: "rejete", ANNULEE: "retiree", ENTRETIEN: "entretien",
+  EN_ATTENTE: "a_traiter", VALIDEE: "preselectionne", REJETEE: "rejete", ANNULEE: "retiree",
 };
 
-function candidatureDepuisEquipe(c: CandidatureEquipe, entretiens: number[]): Candidature {
+/* L'entretien n'est pas un statut chez eux mais un booléen à part (entretienAProg),
+   modifiable quel que soit le statut : on ne le montre que sur une candidature retenue. */
+function candidatureDepuisEquipe(c: CandidatureEquipe): Candidature {
   let statut = STATUTS[c.statut] ?? "a_traiter";
-  if (statut === "preselectionne" && entretiens.includes(c.id)) statut = "entretien";
+  if (statut === "preselectionne" && c.entretienAProg) statut = "entretien";
   return {
     id: c.id,
     candidatId: c.candidat?.id ?? 0,
@@ -257,7 +256,12 @@ function anneesExperience(work: Json[]): number | null {
 
 const anneeMois = (v: unknown) => /^(\d{4})(-\d{2})?/.exec(String(v ?? ""))?.slice(1).join("") ?? "";
 
-/** Le compte et le CV JSON (JSON Resume + meta.criteres, écrit par l'app candidat) → le candidat des écrans. */
+/**
+ * Le compte et le CV JSON → le candidat des écrans. Deux formats circulent dans l'API :
+ * - JSON Resume + meta.criteres, écrit par l'app candidat (basics, work, education, skills) ;
+ * - le format court des comptes de démonstration de l'équipe et du traitement n8n
+ *   (titre, resume, competences: string[], experiences: {poste, entreprise, annees}[], formation: {diplome, ville}[]).
+ */
 function candidatDepuisEquipe(u: UserEquipe, p: ProfilEquipe | undefined): Candidat {
   let cv: unknown = p?.cv;
   if (typeof cv === "string") {
@@ -269,23 +273,38 @@ function candidatDepuisEquipe(u: UserEquipe, p: ProfilEquipe | undefined): Candi
   const morceaux = String(b.name ?? "").trim().split(/\s+/).filter(Boolean);
   const work = tableau(doc.work);
   const education = tableau(doc.education);
-  const niveaux = education.map((e) => niveauDepuisTexte(String(e.studyType ?? ""))).filter((n): n is number => n !== null);
+
+  const court = tableau(doc.experiences);
+  const experiences = [
+    ...work.map((w) => ({ poste: String(w.position ?? "").trim(), employeur: String(w.name ?? "").trim(),
+      debut: anneeMois(w.startDate), fin: anneeMois(w.endDate), annees: null })),
+    ...court.map((x) => ({ poste: String(x.poste ?? "").trim(), employeur: String(x.entreprise ?? "").trim(),
+      debut: "", fin: "", annees: typeof x.annees === "number" ? x.annees : null })),
+  ].filter((x) => x.poste);
+  const formations = [
+    ...education.map((e) => ({ diplome: String(e.studyType ?? "").trim(), domaine: String(e.area ?? "").trim(), etablissement: String(e.institution ?? "").trim() })),
+    ...tableau(doc.formation).map((f) => ({ diplome: String(f.diplome ?? "").trim(), domaine: String(f.domaine ?? "").trim(), etablissement: String(f.etablissement ?? f.ville ?? "").trim() })),
+  ].filter((f) => f.diplome || f.domaine);
+  const niveaux = formations.map((f) => niveauDepuisTexte(f.diplome)).filter((n): n is number => n !== null);
+  const anneesCourt = court.some((x) => typeof x.annees === "number")
+    ? court.reduce((s, x) => s + (typeof x.annees === "number" ? x.annees : 0), 0) : null;
+  const competences = [
+    ...tableau(doc.skills).map((s) => String(s.name ?? "").trim()),
+    ...liste(doc.competences),
+  ].filter(Boolean);
+  const titre = texte(b.label) ?? texte(doc.titre) ?? texte(experiences[0]?.poste);
   return {
     id: u.id,
     prenom: texte(u.prenom) ?? morceaux[0] ?? "",
     nom: texte(u.nom) ?? morceaux.slice(1).join(" "),
     email: texte(u.email) ?? texte(b.email) ?? "",
     telephone: texte(b.phone),
-    titre: texte(b.label) ?? texte(work[0]?.position),
+    titre,
     ville: texte(objet(b.location).city),
-    competences: tableau(doc.skills).map((s) => String(s.name ?? "").trim()).filter(Boolean),
-    experiences: work
-      .map((w) => ({ poste: String(w.position ?? "").trim(), employeur: String(w.name ?? "").trim(), debut: anneeMois(w.startDate), fin: anneeMois(w.endDate) }))
-      .filter((x) => x.poste),
-    formations: education
-      .map((e) => ({ diplome: String(e.studyType ?? "").trim(), domaine: String(e.area ?? "").trim(), etablissement: String(e.institution ?? "").trim() }))
-      .filter((f) => f.diplome || f.domaine),
-    experienceAnnees: anneesExperience(work),
+    competences,
+    experiences,
+    formations,
+    experienceAnnees: work.length ? anneesExperience(work) : anneesCourt,
     niveauFormation: niveaux.length ? Math.max(...niveaux) : null,
     disponibilite: /^\d{4}-\d{2}/.exec(String(c.disponibilite ?? ""))?.[0] ?? null,
     metiersOpt: liste(c.metiersOpt),
@@ -293,21 +312,10 @@ function candidatDepuisEquipe(u: UserEquipe, p: ProfilEquipe | undefined): Candi
     contratsVises: liste(c.contrats),
     zonesVisees: liste(c.zones),
     salaireMin: typeof c.salaireMinimumMensuelXPF === "number" ? c.salaireMinimumMensuelXPF : null,
-    aProfil: Object.keys(doc).length > 0,
+    aProfil: Boolean(titre || competences.length || experiences.length || formations.length || Object.keys(c).length),
     aCv: Boolean(p?.cvDocument),
   };
 }
-
-/* =========================================== ce que l'API ne garde pas */
-
-function lisLocal<T>(cle: string, defaut: T): T {
-  try { return (JSON.parse(localStorage.getItem(cle) ?? "null") as T | null) ?? defaut; } catch { return defaut; }
-}
-function poseLocal(cle: string, v: unknown): void {
-  try { localStorage.setItem(cle, JSON.stringify(v)); } catch { /* sans effet */ }
-}
-const cleEntretiens = () => `avpro.entretiens.${lisSession()?.id ?? 0}`;
-const cleEmployeur = () => `avpro.employeur.${lisSession()?.id ?? 0}`;
 
 /* ==================================================================== api */
 
@@ -345,20 +353,19 @@ export const api = {
       toutesPages<CandidatureEquipe>("/candidatures", refus),
       toutesPages<ProfilEquipe>("/profils", refus),
     ]);
-    const entretiens = lisLocal<number[]>(cleEntretiens(), []);
     const profilDe = new Map(profils.map((p) => [p.candidat.id, p]));
     const comptes = new Map<number, UserEquipe>();
     for (const c of cands) if (c.candidat) comptes.set(c.candidat.id, c.candidat);
     return {
       avp: avp.map(avpDepuisEquipe),
       candidats: [...comptes.values()].map((u) => candidatDepuisEquipe(u, profilDe.get(u.id))),
-      candidatures: cands.map((c) => candidatureDepuisEquipe(c, entretiens)),
+      candidatures: cands.map(candidatureDepuisEquipe),
     };
   },
 
   /** Une candidature relue, pour connaître son vrai statut après un refus. */
   async candidature(id: number): Promise<Candidature> {
-    return candidatureDepuisEquipe(await appel<CandidatureEquipe>("GET", `/candidatures/${id}`), lisLocal<number[]>(cleEntretiens(), []));
+    return candidatureDepuisEquipe(await appel<CandidatureEquipe>("GET", `/candidatures/${id}`));
   },
 
   /**
@@ -387,15 +394,12 @@ export const api = {
     }).catch(() => undefined);
   },
 
-  /* ENTRETIEN : pas encore de statut ni de route dans l'API de l'équipe.
-     En attendant, la validation est gardée dans ce navigateur ; le jour où la
-     route existe, seules ces deux fonctions changent. */
-  async valideEntretien(candidatureId: number): Promise<void> {
-    const l = lisLocal<number[]>(cleEntretiens(), []);
-    if (!l.includes(candidatureId)) poseLocal(cleEntretiens(), [...l, candidatureId]);
-  },
-  async annuleEntretien(candidatureId: number): Promise<void> {
-    poseLocal(cleEntretiens(), lisLocal<number[]>(cleEntretiens(), []).filter((x) => x !== candidatureId));
+  /** Entretien à programmer (true) ou plus (false) : rend la candidature à jour. */
+  async entretien(candidatureId: number, aProgrammer: boolean): Promise<Candidature> {
+    return candidatureDepuisEquipe(await appel<CandidatureEquipe>("PATCH", `/candidatures/${candidatureId}/entretien-a-prog`, {
+      corps: { entretienAProg: aProgrammer },
+      messages: { 404: "Cette candidature n'existe plus." },
+    }));
   },
 
   /** Le CV déposé par le candidat : leur route exige le jeton, on rend une adresse locale. */
@@ -404,11 +408,18 @@ export const api = {
     return URL.createObjectURL(await r.blob());
   },
 
-  /* ----------------------------------------------- coordonnées employeur */
-  employeur(): Employeur {
-    return lisLocal<Employeur>(cleEmployeur(), { organisme: "OPT-NC", contact: "", email: lisSession()?.email ?? "", telephone: "" });
+  /* ---------------------------------------------------- mot de passe */
+  /** Envoie un code à l'adresse du compte. Un 404 (adresse inconnue) n'est pas répété. */
+  async oubli(email: string): Promise<void> {
+    await brut("POST", "/auth/forgot-password", { anonyme: true, corps: { email } }).catch((e) => {
+      if (!(e instanceof ErreurApi) || e.http >= 500 || e.http === 0) throw e;
+    });
   },
-  enregistreEmployeur(e: Employeur): void {
-    poseLocal(cleEmployeur(), e);
+  async oubliConfirme(code: string, motdepasse: string): Promise<void> {
+    await brut("POST", "/auth/reset-password", {
+      anonyme: true,
+      corps: { token: code, password: motdepasse },
+      messages: { 400: "Ce code est inconnu, expiré ou déjà utilisé.", 404: "Ce code est inconnu, expiré ou déjà utilisé." },
+    });
   },
 };

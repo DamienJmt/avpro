@@ -50,11 +50,6 @@ export default function Connexion({ onEntre }: { onEntre: (r: Recruteur) => void
             {envoi ? <><Spinner />Un instant…</> : "Se connecter"}
           </button>
         </form>
-
-        <p className="accueil-note">
-          Pas de compte recruteur ? Il est créé par l’équipe du #HackAVP. Les données affichées sont réelles :
-          elles viennent de l’API commune de l’équipe.
-        </p>
       </div>
     </div>
   );

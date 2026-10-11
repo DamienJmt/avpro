@@ -68,7 +68,7 @@ function Detail({ c, a, e }: { c: Candidat; a: Avp; e: Evaluation }) {
         <h3>Ce que le candidat recherche</h3>
         <Jauges parts={e.candidat} />
         <p style={{ fontSize: "var(--t-xs)", color: "var(--ink-3)", margin: "var(--s3) 0 0" }}>
-          {e.score === null ? "Compatibilité inconnue : aucun critère mesurable." : `Compatibilité ${e.score} % — le plus faible des deux côtés, jamais la moyenne.`}
+          {e.score === null ? "Compatibilité inconnue : aucun critère mesurable." : `Compatibilité ${e.score} % — le plus faible des deux côtés, jamais la moyenne.`}{" "}
           Confiance {conf(e.confiance)}, {e.confiance} % des critères renseignés.
         </p>
       </div>
@@ -93,7 +93,7 @@ function Detail({ c, a, e }: { c: Candidat; a: Avp; e: Evaluation }) {
         {c.experiences.length + c.formations.length === 0
           ? <p className="pa">Aucune expérience ni formation renseignée.</p>
           : <ul className="liste">
-              {c.experiences.map((x, i) => <li key={i}><b>{x.poste}</b>{x.employeur && `, ${x.employeur}`}{(x.debut || x.fin) && ` (${periode(x.debut, x.fin)})`}</li>)}
+              {c.experiences.map((x, i) => <li key={i}><b>{x.poste}</b>{x.employeur && `, ${x.employeur}`}{(x.debut || x.fin) ? ` (${periode(x.debut, x.fin)})` : x.annees !== null ? ` (${x.annees} an${x.annees > 1 ? "s" : ""})` : ""}</li>)}
               {c.formations.map((x, i) => <li key={`f${i}`}><b>{x.diplome || x.domaine}</b>{x.diplome && x.domaine && `, ${x.domaine}`}{x.etablissement && ` · ${x.etablissement}`}</li>)}
             </ul>}
         {(c.email || c.telephone) && (<>

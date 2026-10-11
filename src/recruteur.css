@@ -5,12 +5,6 @@
 .mtags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--s2); }
 .mtags span { font-size: var(--t-xs); background: var(--surface-2); color: var(--ink-2); border-radius: var(--r-sm); padding: 3px 8px; }
 .detail { margin: var(--s3) 0 0; font-size: var(--t-sm); color: var(--ink-2); line-height: 1.6; }
-.tile.entretien .duo { margin-bottom: var(--s3); }
-.tile.entretien .duo .pastille svg { width: 22px; height: 22px; }
-.tile .quand { font-size: var(--t-xs); color: var(--ink-3); margin-top: 4px; display: block; }
-.tile.entretien .actes { margin-top: var(--s3); }
-.tile.entretien .actes button { min-height: 36px; padding: 0 var(--s3); border-radius: var(--r-sm); border: 1px solid var(--line);
-  background: var(--surface); color: var(--no); font-size: var(--t-xs); font-weight: 600; }
 .sheet .pform { margin-bottom: var(--s4); }
 
 /* Décision en attente d'envoi (30 s, annulable) et alertes : posées par-dessus l'écran,
@@ -38,7 +32,8 @@
 .panneau .col-p + .col-p { margin-top: var(--s4); }
 
 /* Trait orange sous le titre d'écran, comme #ec-profil et #ec-interets côté candidat. */
-#ec-avp h2:first-of-type::after, #ec-candidats h2:first-of-type::after, #ec-entretiens h2:first-of-type::after {
+#ec-avp h2:first-of-type::after, #ec-candidats h2:first-of-type::after, #ec-entretiens h2:first-of-type::after,
+#ec-stats h2:first-of-type::after {
   content: ""; display: block; width: 48px; height: 4px; border-radius: var(--r-full);
   background: var(--accent); margin-top: var(--s2);
 }
@@ -60,3 +55,19 @@
 
 .panneau ul.liste.competences li.has { color: var(--yes); font-weight: 600; }
 .detail p { margin: 0 0 var(--s2); }
+
+/* Mon compte : le bouton Afficher / Masquer à côté du nouveau mot de passe */
+.mdp { display: flex; gap: var(--s2); align-items: center; }
+.mdp input { flex: 1; min-width: 0; }
+
+/* Entretiens : ligne dépliable, récapitulatif du poste et de la candidature */
+#ec-entretiens .item .chev svg { transition: transform .15s var(--ease); }
+#ec-entretiens .item.on .chev svg { transform: rotate(90deg); }
+#ec-entretiens .actes button { color: var(--no); }
+.recap { display: grid; gap: var(--s4); margin-top: var(--s3); padding-top: var(--s3); border-top: 1px solid var(--line); cursor: default; }
+@media (min-width: 720px) { .recap { grid-template-columns: 1fr 1fr; gap: var(--s5); } }
+.recap h4 { margin: 0 0 var(--s2); font-size: var(--t-xs); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.recap dl { margin: 0; display: grid; gap: 6px; }
+.recap dl > div { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: var(--s2); font-size: var(--t-sm); }
+.recap dt { color: var(--ink-3); }
+.recap dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }

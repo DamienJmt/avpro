@@ -11,7 +11,7 @@ export default function AvpList({ avp, candidatures }: Ctx) {
     <div className="pad" id="ec-avp">
       <h2>Avis de vacance de poste</h2>
       <p className="lead">Les postes publiés par l’OPT-NC. Touche un avis pour en voir le détail.</p>
-      {avp.length === 0 && <Vide titre="Aucun AVP" texte="L’API de l’équipe n’en renvoie aucun pour l’instant." />}
+      {avp.length === 0 && <Vide titre="Aucun AVP" texte="Aucun avis de vacance de poste publié pour l’instant." />}
       {tries.map((a) => {
         const l = candidatures.filter((k) => k.avpId === a.id && k.statut !== "retiree");
         const n = l.filter((k) => k.statut === "a_traiter").length;
