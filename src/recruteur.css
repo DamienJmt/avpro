@@ -12,3 +12,51 @@
 .tile.entretien .actes button { min-height: 36px; padding: 0 var(--s3); border-radius: var(--r-sm); border: 1px solid var(--line);
   background: var(--surface); color: var(--no); font-size: var(--t-xs); font-weight: 600; }
 .sheet .pform { margin-bottom: var(--s4); }
+
+/* Décision en attente d'envoi (30 s, annulable) et alertes : posées par-dessus l'écran,
+   hors de la grille de .app, au-dessus de la barre de navigation sur mobile. */
+.barre-attente, .alerte {
+  position: fixed; z-index: 60; left: var(--s3); right: var(--s3);
+  bottom: calc(var(--nav-h) + var(--safe-bot) + var(--s2));
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3);
+  border-radius: var(--r-md); box-shadow: var(--shadow-ui); font-size: var(--t-sm);
+}
+.barre-attente { background: var(--ink); color: var(--surface); padding: var(--s3) var(--s4); }
+.barre-attente > span { flex: 1 1 14em; }
+.barre-attente .btn-mini { background: var(--surface); color: var(--ink); }
+.alerte { bottom: calc(var(--nav-h) + var(--safe-bot) + 76px); }
+.alerte > span { flex: 1 1 14em; }
+@media (min-width: 720px) {
+  .barre-attente, .alerte { left: calc(92px + var(--s5)); right: auto; max-width: 640px; bottom: var(--s5); }
+  .alerte { bottom: calc(var(--s5) + 70px); }
+}
+
+/* beta.css donne aussi .attente (la ligne « chargement ») en flex : la pastille d'état s'étirait. */
+.etat.attente { display: inline-block; font-size: var(--t-xs); }
+/* la barre d'une décision en attente ne doit pas masquer le bas des listes */
+.app:has(.barre-attente) .pad { padding-bottom: 96px; }
+.panneau .col-p + .col-p { margin-top: var(--s4); }
+
+/* Trait orange sous le titre d'écran, comme #ec-profil et #ec-interets côté candidat. */
+#ec-avp h2:first-of-type::after, #ec-candidats h2:first-of-type::after, #ec-entretiens h2:first-of-type::after {
+  content: ""; display: block; width: 48px; height: 4px; border-radius: var(--r-full);
+  background: var(--accent); margin-top: var(--s2);
+}
+
+/* Téléphone : la déconnexion est dans la barre du haut, pas en 6e onglet (`.nav button` l'emportait sur `.nav-sortie`),
+   et l'étiquette « Espace recruteur » cède la place quand l'écran est trop étroit. */
+@media (max-width: 719px) { .nav .nav-sortie { display: none; } }
+@media (max-width: 440px) { .topbar .tag-demo { display: none; } }
+
+/* Le rail en colonne flexible, pour poser la déconnexion en bas (v2.css le fait pour .nav.n3, on a cinq onglets). */
+@media (min-width: 720px) { .nav { display: flex; flex-direction: column; } }
+
+/* v2.css masque le bouton de la carte sur grand écran (côté candidat, il ne fait qu'ouvrir le détail) :
+   ici il porte le score, on le garde. */
+@media (min-width: 1100px) {
+  #ec-swipe .card .score-btn { display: inline-flex; }
+  #ec-swipe .card .hero-top { display: flex; }
+}
+
+.panneau ul.liste.competences li.has { color: var(--yes); font-weight: 600; }
+.detail p { margin: 0 0 var(--s2); }
