@@ -90,3 +90,14 @@
   #ec-swipe .filtres-avp .chip.actif { max-width: 22rem; }
   #ec-swipe .filtres-avp .chip.actif .lib { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 }
+
+/* Écrans en liste (AVP, Candidats, Entretiens, Statistiques, Profil) sur grand écran : design.css bride .pad à
+   900 px, et .pad est aussi ce qui défile, d'où une barre de défilement au milieu et un grand vide à droite.
+   Ici .pad prend toute la largeur (la barre revient au bord) et centre une colonne de 1100 px au plus. */
+@media (min-width: 720px) {
+  .screen > .pad {
+    max-width: none;
+    padding-left: max(var(--s6), calc((100% - 1100px) / 2));
+    padding-right: max(var(--s6), calc((100% - 1100px) / 2));
+  }
+}
