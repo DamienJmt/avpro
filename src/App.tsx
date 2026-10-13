@@ -8,17 +8,17 @@ import AvpList from "./screens/AvpList";
 import Candidats from "./screens/Candidats";
 import Entretiens from "./screens/Entretiens";
 import Profil from "./screens/Profil";
-import Statistiques from "./screens/Statistiques";
+import Pilotage from "./screens/Pilotage";
 import Confirmer from "./screens/Confirmer";
 import { find, Icone, nom, Spinner, useSecondes, type EnAttente } from "./screens/shared";
 
-type Onglet = "swipe" | "avp" | "candidats" | "entretiens" | "stats" | "profil";
+type Onglet = "swipe" | "avp" | "candidats" | "entretiens" | "pilotage" | "profil";
 const ONGLETS: { cle: Onglet; icone: string; nom: string }[] = [
   { cle: "swipe", icone: "swipe", nom: "Swipe" },
   { cle: "avp", icone: "briefcase", nom: "AVP" },
   { cle: "candidats", icone: "users", nom: "Candidats" },
   { cle: "entretiens", icone: "calendar", nom: "Entretiens" },
-  { cle: "stats", icone: "chart", nom: "Statistiques" },
+  { cle: "pilotage", icone: "chart", nom: "Pilotage" },
   { cle: "profil", icone: "user", nom: "Profil" },
 ];
 
@@ -175,7 +175,7 @@ export default function App() {
           {onglet === "avp" && <AvpList {...ctx} />}
           {onglet === "candidats" && <Candidats {...ctx} />}
           {onglet === "entretiens" && <Entretiens {...ctx} retirer={(id) => void entretien(id, false)} />}
-          {onglet === "stats" && <Statistiques />}
+          {onglet === "pilotage" && <Pilotage />}
           {onglet === "profil" && <Profil moi={moi} />}
         </>)}
         {k && (
