@@ -3,7 +3,7 @@
 React 19 + TypeScript + Vite, même socle que `beta/`. Le style est celui de l'app candidat :
 `src/design.css`, `src/beta.css` et `src/v2.css` sont des copies de `beta/src/`, `src/recruteur.css` n'ajoute que le propre du recruteur.
 
-Six sections : Swipe · AVP · Candidats (À traiter / Présélectionné / Toutes) · Entretiens · Statistiques (tableaux de bord Power BI à venir) · Profil.
+Six sections : Swipe · AVP · Candidats (À traiter / Présélectionné / Toutes) · Entretiens · Pilotage (tableaux de bord Power BI à venir) · Profil.
 
     npm install && npm run dev      # http://localhost:5173
 
