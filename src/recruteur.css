@@ -71,3 +71,22 @@
 .recap dl > div { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: var(--s2); font-size: var(--t-sm); }
 .recap dt { color: var(--ink-3); }
 .recap dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+
+/* Swipe sur téléphone : la recherche et le bouton Filtres seulement, côte à côte et entiers.
+   Les filtres actifs se lisent sur la pastille du bouton et dans le panneau. */
+@media (max-width: 560px) {
+  #ec-swipe .filtres-avp .recherche { min-width: 0; flex: 1 1 auto; max-width: none; }
+  #ec-swipe .filtres-avp .chip.ouvre-filtres { flex: none; }
+  #ec-swipe .filtres-avp .chip.actif, #ec-swipe .filtres-avp .lien-efface, #ec-swipe .filtres-avp .filtres-total { display: none; }
+}
+/* Filtres actifs : .chip.ouvre-filtres (texte foncé) passait après .chip.on (fond bleu) dans v2.css. */
+.chip.ouvre-filtres.on { color: var(--brand-ink); }
+
+/* Swipe, grand écran : la barre passe à la ligne au lieu de défiler. Dans v2.css elle défile et la recherche
+   y reste collée à gauche (sticky) : les filtres actifs glissaient dessous. Les intitulés longs sont tronqués. */
+@media (min-width: 561px) {
+  #ec-swipe .filtres-avp { flex-wrap: wrap; overflow: visible; row-gap: var(--s2); }
+  #ec-swipe .filtres-avp .recherche { position: static; box-shadow: none; }
+  #ec-swipe .filtres-avp .chip.actif { max-width: 22rem; }
+  #ec-swipe .filtres-avp .chip.actif .lib { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+}

@@ -232,71 +232,155 @@ function Carte({ c, a, profondeur, peutRevenir, onDecide, onRetour, onDetail }: 
   );
 }
 
+/* Les filtres, comme le deck de l'app candidat : plusieurs choix dans une catégorie = l'un OU l'autre,
+   d'une catégorie à l'autre = les deux. Chaque case affiche le nombre de candidats qu'on verrait en la cochant. */
+type Categorie = "postes" | "directions" | "zones";
+type Option = "profil" | "cv";
+interface Filtres { postes: number[]; directions: string[]; zones: string[]; options: Option[] }
+const AUCUN: Filtres = { postes: [], directions: [], zones: [], options: [] };
+const CATEGORIES: { cle: Categorie; titre: string }[] = [
+  { cle: "postes", titre: "Poste" }, { cle: "directions", titre: "Direction" }, { cle: "zones", titre: "Lieu du poste" },
+];
+const OPTIONS: { cle: Option; titre: string }[] = [
+  { cle: "profil", titre: "Profil renseigné" }, { cle: "cv", titre: "CV déposé" },
+];
+interface Ligne { k: Candidature; c: Candidat; a: Avp }
+type Valeur = string | number;
+const valeurDe = (l: Ligne, cle: Categorie): Valeur | null =>
+  cle === "postes" ? l.a.id : cle === "directions" ? l.a.direction : l.a.zone;
+const choisis = (f: Filtres, cle: Categorie) => f[cle] as Valeur[];
+const passe = (l: Ligne, f: Filtres, sauf?: Categorie) =>
+  CATEGORIES.every(({ cle }) => cle === sauf || !f[cle].length || choisis(f, cle).includes(valeurDe(l, cle) ?? ""))
+  && f.options.every((o) => (o === "profil" ? l.c.aProfil : l.c.aCv));
+const nbActifs = (f: Filtres) => f.postes.length + f.directions.length + f.zones.length + f.options.length;
+const bascule = <T,>(l: T[], v: T) => (l.includes(v) ? l.filter((x) => x !== v) : [...l, v]);
+
+function PanneauFiltres({ f, lignes, total, avp, change, fermer }: {
+  f: Filtres; lignes: Ligne[]; total: number; avp: Avp[]; change: (f: Filtres) => void; fermer: () => void;
+}) {
+  const libelle = (cle: Categorie, v: Valeur) => (cle === "postes" ? find(avp, v as number)?.titre ?? "" : String(v));
+  const ligne = (cle: string, coche: boolean, nomCase: string, n: number, agir: () => void) => (
+    <label key={cle} className={`pf-ligne${!coche && n === 0 ? " vide" : ""}`}>
+      <input type="checkbox" checked={coche} disabled={!coche && n === 0} onChange={agir} />
+      <span className="pf-nom">{nomCase}</span>
+      <span className="pf-n">{n}</span>
+    </label>
+  );
+  return (
+    <div className="pf">
+      <div className="pf-tete">
+        <h2>Filtres</h2>
+        <p>{total} candidat{total > 1 ? "s" : ""} à traiter correspond{total > 1 ? "ent" : ""}</p>
+      </div>
+      {CATEGORIES.map(({ cle, titre }) => {
+        const valeurs = [...new Set(lignes.map((l) => valeurDe(l, cle)).filter((v): v is Valeur => v !== null && v !== ""))];
+        const c = choisis(f, cle);
+        if (valeurs.length < 2 && !c.length) return null;      // une seule valeur ne filtre rien
+        return (
+          <section key={cle} className="pf-section">
+            <h3>{titre}{c.length ? <span className="pf-choix">{c.length} choisi{c.length > 1 ? "s" : ""}</span> : null}</h3>
+            <div className="pf-lignes">
+              {valeurs.map((v) => ligne(`${cle}:${v}`, c.includes(v), libelle(cle, v),
+                lignes.filter((l) => passe(l, f, cle) && valeurDe(l, cle) === v).length,
+                () => change({ ...f, [cle]: bascule(c, v) })))}
+            </div>
+          </section>
+        );
+      })}
+      <section className="pf-section">
+        <h3>Options</h3>
+        <div className="pf-lignes">
+          {OPTIONS.map(({ cle, titre }) => ligne(`o:${cle}`, f.options.includes(cle), titre,
+            lignes.filter((l) => passe(l, { ...f, options: [...new Set([...f.options, cle])] })).length,
+            () => change({ ...f, options: bascule(f.options, cle) })))}
+        </div>
+      </section>
+      <div className="pf-pied">
+        <button className="btn" disabled={!nbActifs(f)} onClick={() => change(AUCUN)}>Tout effacer</button>
+        <button className="btn primaire" onClick={fermer}>Voir {total} candidat{total > 1 ? "s" : ""}</button>
+      </div>
+    </div>
+  );
+}
+
 export default function Swipe({ candidatures, candidats, avp, attente, decider, annuler }: Ctx) {
-  const [filtre, setFiltre] = useState<number | null>(null);
+  const [filtres, setFiltres] = useState<Filtres>(AUCUN);
+  const [panneau, setPanneau] = useState(false);
   const [recherche, setRecherche] = useState("");
   const [feuille, setFeuille] = useState(false);
 
-  const atraiter = candidatures.filter((k) => k.statut === "a_traiter");
   const q = recherche.trim().toLowerCase();
   // Une candidature dont l'AVP ou le candidat manque ne peut pas faire de carte : elle reste dans l'onglet Candidats.
-  const pile = atraiter.filter((k) => {
-    const c = find(candidats, k.candidatId);
-    return c && find(avp, k.avpId) && (filtre === null || k.avpId === filtre) && (!q || `${nom(c)} ${c.titre ?? ""}`.toLowerCase().includes(q));
-  });
-  const [courante, suivante] = pile;
-  const cc = courante && find(candidats, courante.candidatId);
-  const ca = courante && find(avp, courante.avpId);
-  // Seuls les postes qui ont des candidatures à traiter ont une puce.
-  const postes = avp.filter((a) => a.id === filtre || atraiter.some((k) => k.avpId === a.id));
-  const derniere = attente[attente.length - 1];
-
-  const rendu = (k: Candidature, profondeur: number) => {
+  const lignes: Ligne[] = candidatures.filter((k) => k.statut === "a_traiter").flatMap((k) => {
     const c = find(candidats, k.candidatId), a = find(avp, k.avpId);
-    return c && a ? (
-      <Carte key={k.id} k={k} c={c} a={a} profondeur={profondeur} peutRevenir={Boolean(derniere)}
-        onDecide={(ok) => decider(k.id, ok)} onRetour={() => derniere && annuler(derniere.id)} onDetail={() => setFeuille(true)} />
-    ) : null;
-  };
+    return c && a && (!q || `${nom(c)} ${c.titre ?? ""} ${a.titre}`.toLowerCase().includes(q)) ? [{ k, c, a }] : [];
+  });
+  const pile = lignes.filter((l) => passe(l, filtres));
+  const [courante, suivante] = pile;
+  const derniere = attente[attente.length - 1];
+  const actifs = nbActifs(filtres);
+
+  const rendu = (l: Ligne, profondeur: number) => (
+    <Carte key={l.k.id} k={l.k} c={l.c} a={l.a} profondeur={profondeur} peutRevenir={Boolean(derniere)}
+      onDecide={(ok) => decider(l.k.id, ok)} onRetour={() => derniere && annuler(derniere.id)} onDetail={() => setFeuille(true)} />
+  );
 
   return (
     <div className="stack">
       <div className="filters filtres-avp">
         <input type="search" className="recherche" value={recherche} placeholder="Chercher un candidat, un métier…"
           onChange={(e) => setRecherche(e.target.value)} aria-label="Rechercher parmi les candidats" />
-        <button className="chip" aria-pressed={filtre === null} onClick={() => setFiltre(null)}>
-          Tous les postes <span className="cpt">{atraiter.length}</span>
+        <button type="button" className={`chip ouvre-filtres${actifs ? " on" : ""}`} onClick={() => setPanneau(true)} aria-haspopup="dialog">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+          Filtres{actifs > 0 && <span className="pastille">{actifs}</span>}
         </button>
-        {postes.map((a) => (
-          <button key={a.id} className="chip" aria-pressed={filtre === a.id} onClick={() => setFiltre(a.id)}>
-            {a.titre} <span className="cpt">{atraiter.filter((k) => k.avpId === a.id).length}</span>
+        {CATEGORIES.flatMap(({ cle }) => choisis(filtres, cle).map((v) => (
+          <button key={`${cle}:${v}`} className="chip actif" title={String(cle === "postes" ? find(avp, v as number)?.titre : v)}
+            onClick={() => setFiltres({ ...filtres, [cle]: bascule(choisis(filtres, cle), v) })}>
+            <span className="lib">{cle === "postes" ? find(avp, v as number)?.titre : v}</span> <span className="croix" aria-hidden="true">✕</span>
+          </button>
+        )))}
+        {OPTIONS.filter(({ cle }) => filtres.options.includes(cle)).map(({ cle, titre }) => (
+          <button key={cle} className="chip actif" onClick={() => setFiltres({ ...filtres, options: bascule(filtres.options, cle) })}>
+            <span className="lib">{titre}</span> <span className="croix" aria-hidden="true">✕</span>
           </button>
         ))}
+        {actifs > 0 && <button className="lien-efface" onClick={() => setFiltres(AUCUN)}>Tout effacer</button>}
+        <span className="filtres-total" aria-live="polite"><b>{pile.length}</b> candidat{pile.length > 1 ? "s" : ""}</span>
       </div>
 
       <div className="zone-deck">
         {!courante && (
           <div className="empty"><div>
-            <h2>{atraiter.length ? "Aucun candidat avec ces filtres" : "Tu as tout examiné"}</h2>
-            <p>{atraiter.length ? "Retire un filtre ou touche « Tous les postes »." : "Les candidatures présélectionnées sont dans l'onglet Candidats."}</p>
+            <h2>{lignes.length ? "Aucun candidat avec ces filtres" : "Tu as tout examiné"}</h2>
+            <p>{lignes.length ? "Retire un filtre ou touche « Tout effacer »." : "Les candidatures présélectionnées sont dans l'onglet Candidats."}</p>
           </div></div>
         )}
         {suivante && rendu(suivante, 1)}
         {courante && rendu(courante, 0)}
       </div>
 
-      {courante && cc && ca && (
-        <aside className="side panneau" id="side"><Detail c={cc} a={ca} e={evalue(cc, ca)} /></aside>
+      {courante && (
+        <aside className="side panneau" id="side"><Detail c={courante.c} a={courante.a} e={evalue(courante.c, courante.a)} /></aside>
       )}
 
-      {feuille && courante && cc && ca && (
+      {feuille && courante && (
         <div className="sheet" onClick={() => setFeuille(false)}>
           <div className="sheet-box" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <div className="poignee" />
-            <div className="panneau"><Detail c={cc} a={ca} e={evalue(cc, ca)} /></div>
+            <div className="panneau"><Detail c={courante.c} a={courante.a} e={evalue(courante.c, courante.a)} /></div>
             <div className="btns" style={{ marginTop: "var(--s5)" }}>
               <button className="btn primaire" onClick={() => setFeuille(false)}>Fermer</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {panneau && (
+        <div className="sheet" onClick={() => setPanneau(false)}>
+          <div className="sheet-box" role="dialog" aria-modal="true" aria-label="Filtres" onClick={(e) => e.stopPropagation()}>
+            <div className="poignee" />
+            <PanneauFiltres f={filtres} lignes={lignes} total={pile.length} avp={avp} change={setFiltres} fermer={() => setPanneau(false)} />
           </div>
         </div>
       )}
