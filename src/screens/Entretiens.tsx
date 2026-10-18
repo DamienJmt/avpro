@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { evalue } from "../scoring";
-import { find, Icone, nom, titreAvp, Vide, type Ctx } from "./shared";
+import { useMatching } from "../matching";
+import type { Avp, Candidat, Candidature } from "../types";
+import { CaseScore, find, Icone, nom, titreAvp, Vide, type Ctx } from "./shared";
 
 const NIVEAUX: Record<number, string> = { 1: "Bac", 2: "Bac+2", 3: "Bac+3", 4: "Bac+5" };
 const date = (d: string) => new Date(d).toLocaleDateString("fr-FR");
@@ -9,6 +10,14 @@ const mois = (d: string) => new Date(`${d}-01`).toLocaleDateString("fr-FR", { mo
 /** Une ligne du récapitulatif : rien n'est affiché quand la valeur manque. */
 function Ligne({ dt, dd }: { dt: string; dd: React.ReactNode }) {
   return dd ? <div><dt>{dt}</dt><dd>{dd}</dd></div> : null;
+}
+
+/** La ligne « Compatibilité » du récapitulatif, lue dans le service de matching. */
+function LigneCompatibilite({ k, c, a }: { k: Candidature; c?: Candidat; a?: Avp }) {
+  const e = useMatching(k, c, a);
+  return <Ligne dt="Compatibilité" dd={e.etat === "ok"
+    ? `${e.m.pourcentage} % · ${e.m.libelle} · ${e.m.couvertes}/${e.m.nbCompetences} compétences du poste`
+    : e.etat === "attente" ? "calcul en cours…" : e.etat === "erreur" ? e.message : null} />;
 }
 
 export default function Entretiens({ candidatures, candidats, avp, retirer }: Ctx & { retirer: (id: number) => void }) {
@@ -22,11 +31,10 @@ export default function Entretiens({ candidatures, candidats, avp, retirer }: Ct
       {liste.map((k) => {
         const a = find(avp, k.avpId);
         const c = find(candidats, k.candidatId);
-        const e = a && c ? evalue(c, a) : null;
         const deplie = ouvert === k.id;
         return (
           <div key={k.id} className={`item${deplie ? " on" : ""}`} onClick={() => setOuvert(deplie ? null : k.id)}>
-            <div className="sc">{e?.score ?? "–"}<small>SCORE</small></div>
+            <CaseScore k={k} candidats={candidats} avp={avp} />
             <div>
               <h3>{nom(c)}</h3>
               <div className="meta">{titreAvp(k, avp)}{a?.direction && ` · ${a.direction}`}</div>
@@ -53,7 +61,7 @@ export default function Entretiens({ candidatures, candidats, avp, retirer }: Ct
                       <Ligne dt="Expérience" dd={c?.experienceAnnees != null && `${c.experienceAnnees} an${c.experienceAnnees > 1 ? "s" : ""}`} />
                       <Ligne dt="Formation" dd={c?.niveauFormation && NIVEAUX[c.niveauFormation]} />
                       <Ligne dt="Disponible" dd={c?.disponibilite && `dès ${mois(c.disponibilite)}`} />
-                      <Ligne dt="Compatibilité" dd={e?.score != null && `${e.score} % · ${e.ok.length}/${a?.competences.length ?? 0} compétences attendues`} />
+                      <LigneCompatibilite k={k} c={c} a={a} />
                     </dl>
                     {c && c.competences.length > 0 && (
                       <div className="mtags">{c.competences.slice(0, 6).map((x) => <span key={x}>{x}</span>)}</div>

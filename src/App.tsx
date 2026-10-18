@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
+import { videMatching } from "./matching";
 import { ErreurApi } from "./types";
 import type { Avp, Candidat, Candidature, Recruteur, Statut } from "./types";
 import Connexion from "./screens/Connexion";
@@ -156,7 +157,7 @@ export default function App() {
         </span>
         <span className="tag-demo">Espace recruteur</span>
         <span className="spacer" />
-        <button className="btn-mini" onClick={() => void charge()} disabled={chargement}>
+        <button className="btn-mini" onClick={() => { videMatching(); void charge(); }} disabled={chargement}>
           {chargement ? <><Spinner /> Chargement</> : "Actualiser"}
         </button>
         <button className="iconbtn sortie-haut" onClick={() => void deconnexion()} title="Se déconnecter" aria-label="Se déconnecter">

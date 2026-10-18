@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { classeEtat, find, LIBELLE, nom, scoreDe, titreAvp, useSecondes, Vide, type Ctx, type EnAttente } from "./shared";
+import { CaseScore, classeEtat, find, LIBELLE, nom, titreAvp, useSecondes, Vide, type Ctx, type EnAttente } from "./shared";
 
 const ONGLETS = [
   { id: "a_traiter", label: "À traiter" },
@@ -35,11 +35,10 @@ export default function Candidats({ candidatures, candidats, avp, attente, decid
       {liste.length === 0 && <Vide titre="Rien ici pour l'instant" texte="Les candidatures apparaîtront dans cet onglet." />}
       {liste.map((k) => {
         const c = find(candidats, k.candidatId);
-        const s = scoreDe(k, candidats, avp);
         const enAttente = attente.find((x) => x.id === k.id);
         return (
           <div key={k.id} className={`item${k.statut === "retiree" ? " closed" : ""}`} style={{ cursor: "default" }}>
-            <div className="sc">{s ?? "–"}<small>SCORE</small></div>
+            <CaseScore k={k} candidats={candidats} avp={avp} />
             <div>
               <h3>{nom(c)}</h3>
               <div className="meta">{[c?.titre, c?.ville].filter(Boolean).join(" · ") || c?.email}</div>

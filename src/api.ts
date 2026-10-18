@@ -215,7 +215,7 @@ interface CandidatureEquipe {
   id: number; candidat?: UserEquipe | null; avpId: number; avpReference?: string | null; avpTitre?: string | null;
   statut: string; entretienAProg?: boolean | null; createdAt: string; updatedAt?: string | null;
 }
-interface ProfilEquipe { candidat: UserEquipe; cv?: unknown; cvDocument?: string | null }
+interface ProfilEquipe { candidat: UserEquipe; cv?: unknown; cvJsonGenere?: unknown; cvDocument?: string | null }
 
 const STATUTS: Record<string, Statut> = {
   EN_ATTENTE: "a_traiter", VALIDEE: "preselectionne", REJETEE: "rejete", ANNULEE: "retiree",
@@ -256,20 +256,30 @@ function anneesExperience(work: Json[]): number | null {
 
 const anneeMois = (v: unknown) => /^(\d{4})(-\d{2})?/.exec(String(v ?? ""))?.slice(1).join("") ?? "";
 
+/** Un champ CV de l'API : objet, chaîne JSON, ou rien. */
+function docJson(v: unknown): Json {
+  if (typeof v === "string") {
+    try { return objet(JSON.parse(v)); } catch { return {}; }
+  }
+  return objet(v);
+}
+/** Le document porte-t-il un parcours (et pas seulement des repères comme meta) ? */
+const utile = (d: Json) => Object.keys(d).some((k) => k !== "meta" && k !== "$schema");
+
 /**
- * Le compte et le CV JSON → le candidat des écrans. Deux formats circulent dans l'API :
- * - JSON Resume + meta.criteres, écrit par l'app candidat (basics, work, education, skills) ;
- * - le format court des comptes de démonstration de l'équipe et du traitement n8n
- *   (titre, resume, competences: string[], experiences: {poste, entreprise, annees}[], formation: {diplome, ville}[]).
+ * Le compte et le CV JSON → le candidat des écrans. Plusieurs formats circulent dans l'API :
+ * - JSON Resume + meta.criteres, écrit par l'app candidat, dans `cv` ;
+ * - JSON Resume produit par la lecture du CV déposé (n8n), dans `cvJsonGenere` ;
+ * - les formats courts des comptes de démonstration : titre, resume, ville, permisB, anneesExperience,
+ *   competences: string[], experiences: {poste, entreprise | employeur, annees}[],
+ *   formation: {diplome, ville}[] ou une simple chaîne (« CAP »).
  */
 function candidatDepuisEquipe(u: UserEquipe, p: ProfilEquipe | undefined): Candidat {
-  let cv: unknown = p?.cv;
-  if (typeof cv === "string") {
-    try { cv = JSON.parse(cv); } catch { cv = {}; }
-  }
-  const doc = objet(cv);
+  const saisi = docJson(p?.cv);
+  const lu = docJson(p?.cvJsonGenere);
+  const doc = utile(saisi) ? saisi : utile(lu) ? lu : saisi;
   const b = objet(doc.basics);
-  const c = objet(objet(doc.meta).criteres);
+  const c = objet(objet(saisi.meta).criteres);          // les critères ne sont saisis que dans l'app candidat
   const morceaux = String(b.name ?? "").trim().split(/\s+/).filter(Boolean);
   const work = tableau(doc.work);
   const education = tableau(doc.education);
@@ -278,20 +288,27 @@ function candidatDepuisEquipe(u: UserEquipe, p: ProfilEquipe | undefined): Candi
   const experiences = [
     ...work.map((w) => ({ poste: String(w.position ?? "").trim(), employeur: String(w.name ?? "").trim(),
       debut: anneeMois(w.startDate), fin: anneeMois(w.endDate), annees: null })),
-    ...court.map((x) => ({ poste: String(x.poste ?? "").trim(), employeur: String(x.entreprise ?? "").trim(),
+    ...court.map((x) => ({ poste: String(x.poste ?? "").trim(), employeur: String(x.entreprise ?? x.employeur ?? "").trim(),
       debut: "", fin: "", annees: typeof x.annees === "number" ? x.annees : null })),
   ].filter((x) => x.poste);
+  const formationCourte = typeof doc.formation === "string"
+    ? [{ diplome: doc.formation.trim(), domaine: "", etablissement: "" }]
+    : tableau(doc.formation).map((f) => ({ diplome: String(f.diplome ?? "").trim(), domaine: String(f.domaine ?? "").trim(), etablissement: String(f.etablissement ?? f.ville ?? "").trim() }));
   const formations = [
     ...education.map((e) => ({ diplome: String(e.studyType ?? "").trim(), domaine: String(e.area ?? "").trim(), etablissement: String(e.institution ?? "").trim() })),
-    ...tableau(doc.formation).map((f) => ({ diplome: String(f.diplome ?? "").trim(), domaine: String(f.domaine ?? "").trim(), etablissement: String(f.etablissement ?? f.ville ?? "").trim() })),
+    ...formationCourte,
   ].filter((f) => f.diplome || f.domaine);
   const niveaux = formations.map((f) => niveauDepuisTexte(f.diplome)).filter((n): n is number => n !== null);
-  const anneesCourt = court.some((x) => typeof x.annees === "number")
-    ? court.reduce((s, x) => s + (typeof x.annees === "number" ? x.annees : 0), 0) : null;
-  const competences = [
-    ...tableau(doc.skills).map((s) => String(s.name ?? "").trim()),
+  const anneesCourt = typeof doc.anneesExperience === "number" ? doc.anneesExperience
+    : court.some((x) => typeof x.annees === "number") ? court.reduce((s, x) => s + (typeof x.annees === "number" ? x.annees : 0), 0) : null;
+  // Une compétence JSON Resume peut être une rubrique (« Compétences techniques ») et ses mots-clés : on garde les mots-clés.
+  const competences = [...new Set([
+    ...tableau(doc.skills).flatMap((s) => {
+      const mots = liste(s.keywords).filter((k) => !k.startsWith("OPT-NC:"));
+      return mots.length > 1 ? mots : [String(s.name ?? "").trim()];
+    }),
     ...liste(doc.competences),
-  ].filter(Boolean);
+  ].filter(Boolean))];
   const titre = texte(b.label) ?? texte(doc.titre) ?? texte(experiences[0]?.poste);
   return {
     id: u.id,
@@ -300,7 +317,7 @@ function candidatDepuisEquipe(u: UserEquipe, p: ProfilEquipe | undefined): Candi
     email: texte(u.email) ?? texte(b.email) ?? "",
     telephone: texte(b.phone),
     titre,
-    ville: texte(objet(b.location).city),
+    ville: texte(objet(b.location).city) ?? texte(doc.ville),
     competences,
     experiences,
     formations,
@@ -314,6 +331,42 @@ function candidatDepuisEquipe(u: UserEquipe, p: ProfilEquipe | undefined): Candi
     salaireMin: typeof c.salaireMinimumMensuelXPF === "number" ? c.salaireMinimumMensuelXPF : null,
     aProfil: Boolean(titre || competences.length || experiences.length || formations.length || Object.keys(c).length),
     aCv: Boolean(p?.cvDocument),
+    cvMatching: cvPourMatching(doc, [texte(u.prenom), texte(u.nom), ...morceaux]),
+  };
+}
+
+/**
+ * Le CV envoyé au service de matching : du JSON Resume, SANS l'identité (nom, adresse, téléphone,
+ * profils en ligne). Le service ne la lit pas ; elle n'a pas à quitter l'API de l'équipe.
+ * Un format court est converti ; null si le profil est vide.
+ */
+function cvPourMatching(doc: Json, noms: (string | null)[]): Record<string, unknown> | null {
+  if (!utile(doc)) return null;
+  // Le résumé commence souvent par le nom (« Léa Wamytan, 3 ans d'expérience… ») : on l'en retire.
+  const mots = noms.flatMap((n) => (n ?? "").split(/\s+/)).filter((n) => n.length > 1);
+  const echappe = (n: string) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const sansNom = (t: unknown): string | undefined => {
+    if (typeof t !== "string") return undefined;
+    const r = mots.reduce((acc, n) => acc.replace(new RegExp(echappe(n), "gi"), ""), t);
+    return r.replace(/^[\s,;:-]+/, "").replace(/\s{2,}/g, " ").trim() || undefined;
+  };
+  if (doc.basics || doc.work || doc.skills || doc.education) {
+    const b = objet(doc.basics);
+    const { meta: _meta, $schema: _schema, references: _refs, ...reste } = doc;
+    return { ...reste, basics: { label: b.label, summary: sansNom(b.summary), location: objet(b.location).city ? { city: objet(b.location).city } : undefined } };
+  }
+  const formation = typeof doc.formation === "string" ? [{ studyType: doc.formation }]
+    : tableau(doc.formation).map((f) => ({ studyType: f.diplome, area: f.domaine, institution: f.etablissement }));
+  return {
+    basics: { label: doc.titre, summary: sansNom(doc.resume), location: doc.ville ? { city: doc.ville } : undefined },
+    work: tableau(doc.experiences).map((x) => ({
+      position: x.poste, name: x.entreprise ?? x.employeur,
+      summary: typeof x.annees === "number" ? `${x.annees} an${x.annees > 1 ? "s" : ""} d'expérience` : undefined,
+    })),
+    education: formation,
+    skills: liste(doc.competences).map((name) => ({ name })),
+    languages: liste(doc.langues).map((language) => ({ language })),
+    certificates: doc.permisB === true ? [{ name: "Permis B" }] : [],
   };
 }
 

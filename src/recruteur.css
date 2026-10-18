@@ -101,3 +101,6 @@
     padding-right: max(var(--s6), calc((100% - 1100px) / 2));
   }
 }
+
+/* Matching : la ligne du CV citée en preuve, en retrait du texte de l'attendu */
+.preuve { color: var(--ink-3); font-style: italic; }
