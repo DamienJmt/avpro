@@ -9,7 +9,9 @@ import AvpList from "./screens/AvpList";
 import Candidats from "./screens/Candidats";
 import Entretiens from "./screens/Entretiens";
 import Profil from "./screens/Profil";
-import Pilotage from "./screens/Pilotage";
+// Pilotage (tableaux de bord Power BI, MS7) désactivé tant que le module n'est pas livré.
+// Pour le réactiver : décommenter cet import, l'onglet dans ONGLETS et la ligne {onglet === "pilotage" …} plus bas.
+// import Pilotage from "./screens/Pilotage";
 import Confirmer from "./screens/Confirmer";
 import { find, Icone, nom, Spinner, useSecondes, type EnAttente } from "./screens/shared";
 
@@ -19,7 +21,7 @@ const ONGLETS: { cle: Onglet; icone: string; nom: string }[] = [
   { cle: "avp", icone: "briefcase", nom: "AVP" },
   { cle: "candidats", icone: "users", nom: "Candidats" },
   { cle: "entretiens", icone: "calendar", nom: "Entretiens" },
-  { cle: "pilotage", icone: "chart", nom: "Pilotage" },
+  // { cle: "pilotage", icone: "chart", nom: "Pilotage" },   // désactivé, voir l'import plus haut
   { cle: "profil", icone: "user", nom: "Profil" },
 ];
 
@@ -176,7 +178,7 @@ export default function App() {
           {onglet === "avp" && <AvpList {...ctx} />}
           {onglet === "candidats" && <Candidats {...ctx} />}
           {onglet === "entretiens" && <Entretiens {...ctx} retirer={(id) => void entretien(id, false)} />}
-          {onglet === "pilotage" && <Pilotage />}
+          {/* {onglet === "pilotage" && <Pilotage />} — désactivé, voir l'import en haut du fichier */}
           {onglet === "profil" && <Profil moi={moi} />}
         </>)}
         {k && (
