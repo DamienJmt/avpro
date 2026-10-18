@@ -2,15 +2,17 @@ import { useRef, useState } from "react";
 import { api } from "../api";
 import { ErreurApi } from "../types";
 import type { Avp, Candidat, Candidature } from "../types";
-import { demandee, evalue, type Evaluation, type Part } from "../scoring";
-import { conf, find, Icone, nom, Spinner, teinte, type Ctx } from "./shared";
+import { criteres, type Part } from "../scoring";
+import { couleurNiveau, useMatching, type EtatMatching, type Preuve } from "../matching";
+import { find, Icone, nom, Spinner, type Ctx } from "./shared";
 
 const SEUIL = 90;
 const mois = (d: string) => new Date(`${d}-01`).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
 const periode = (d: string, f: string) => (d ? (f ? `${d} – ${f}` : `depuis ${d}`) : f);
 const NIVEAUX: Record<number, string> = { 1: "Bac", 2: "Bac+2", 3: "Bac+3", 4: "Bac+5" };
 
-function Jauges({ parts }: { parts: Part[] }) {
+/** Les critères du candidat : dans ses critères, hors de ses critères, ou non renseignés. */
+function Criteres({ parts }: { parts: Part[] }) {
   return (
     <div className="jauges">
       {parts.map((x) => {
@@ -18,12 +20,81 @@ function Jauges({ parts }: { parts: Part[] }) {
         return (
           <div className={`jauge${inc ? " inconnu" : ""}`} key={x.cle}>
             <span>{x.cle}</span>
-            <span className="piste"><b style={{ width: `${inc ? 0 : x.v}%`, background: inc ? "var(--line)" : teinte(x.v!) }} /></span>
-            <span className="v">{inc ? "inconnu" : `${x.v} %`}</span>
+            <span className="piste"><b style={{ width: inc ? 0 : "100%", background: x.v === 100 ? "var(--yes)" : "var(--no)" }} /></span>
+            <span className="v">{inc ? "inconnu" : x.v === 100 ? "oui" : "non"}</span>
           </div>
         );
       })}
     </div>
+  );
+}
+
+/** Une liste de preuves du matching, tronquée à six. */
+function Preuves({ titre, l, couleur, vide, proche }: { titre: string; l: Preuve[]; couleur: string; vide: string; proche?: boolean }) {
+  return (
+    <div>
+      <b style={{ color: couleur, fontSize: "var(--t-sm)" }}>{titre}</b>
+      <ul>
+        {l.length === 0 && <li>{vide}</li>}
+        {l.slice(0, 6).map((p, i) => (
+          <li key={i}>{p.attendu}{p.phraseCv && <span className="preuve"> — {proche ? "au plus proche : " : ""}« {p.phraseCv} »</span>}</li>
+        ))}
+        {l.length > 6 && <li className="preuve">… et {l.length - 6} autre{l.length > 7 ? "s" : ""}</li>}
+      </ul>
+    </div>
+  );
+}
+
+const STATUT_PREREQUIS: Record<string, string> = {
+  rempli: "rempli", non_rempli: "non rempli", mention_probable: "probablement mentionné", a_verifier: "à vérifier",
+};
+
+/** Le résultat du service de matching, dans le panneau de détail. */
+function Compatibilite({ e }: { e: EtatMatching }) {
+  if (e.etat === "attente") return <p className="attente" role="status"><Spinner /> Calcul de la compatibilité…</p>;
+  if (e.etat === "vide") return <p className="pa">Pas de CV à comparer : le candidat n’a ni rempli son profil ni déposé de CV lu.</p>;
+  if (e.etat === "erreur") return <p className="pa">Compatibilité indisponible : {e.message}</p>;
+  const m = e.m;
+  return (
+    <>
+      <div className="jauges">
+        <div className="jauge">
+          <span>Compétences du poste</span>
+          <span className="piste"><b style={{ width: `${m.pourcentage}%`, background: couleurNiveau(m.niveau) }} /></span>
+          <span className="v">{m.pourcentage} %</span>
+        </div>
+      </div>
+      <p style={{ fontSize: "var(--t-sm)", margin: "var(--s2) 0 0" }}>
+        <b style={{ color: couleurNiveau(m.niveau) }}>{m.libelle}</b> · {m.couvertes}/{m.nbCompetences} compétences du poste couvertes
+      </p>
+      {(!m.fiable || m.avertissement) && <p className="pa" style={{ marginTop: "var(--s2)" }}>{m.avertissement ?? "Résultat peu fiable : CV trop court."}</p>}
+    </>
+  );
+}
+
+function Pourquoi({ e }: { e: EtatMatching }) {
+  if (e.etat !== "ok") return null;
+  const m = e.m;
+  return (
+    <>
+      <h3>Pourquoi ce score</h3>
+      <div className="deux">
+        <Preuves titre="Points forts" l={m.pointsForts} couleur="var(--yes)" vide="Aucune compétence du poste retrouvée" />
+        <Preuves titre="À vérifier" l={m.aVerifier} couleur="var(--accent)" vide="Rien à signaler" proche />
+      </div>
+      {m.savoirEtre.length > 0 && (<>
+        <h3>Savoir-être, à vérifier en entretien</h3>
+        <ul className="liste">{m.savoirEtre.slice(0, 6).map((p, i) => <li key={i}>{p.attendu}</li>)}</ul>
+      </>)}
+      {m.prerequis.length > 0 && (<>
+        <h3>Prérequis</h3>
+        <ul className="liste">
+          {m.prerequis.map((p, i) => (
+            <li key={i}><b>{p.prerequis}</b>{!p.obligatoire && " (souhaité)"} : {STATUT_PREREQUIS[p.statut] ?? p.statut}{p.motif && ` — ${p.motif}`}</li>
+          ))}
+        </ul>
+      </>)}
+    </>
   );
 }
 
@@ -55,40 +126,25 @@ function BoutonCv({ c }: { c: Candidat }) {
 }
 
 /* Panneau de détail : même ossature que celui de l'app candidat, côté employeur. */
-function Detail({ c, a, e }: { c: Candidat; a: Avp; e: Evaluation }) {
+function Detail({ k, c, a }: { k: Candidature; c: Candidat; a: Avp }) {
+  const e = useMatching(k, c, a);
+  const cr = criteres(c, a);
   return (
     <>
       <div className="col-p">
         <div className="titre">{nom(c)}</div>
         <div className="org">{[c.titre, c.ville].filter(Boolean).join(" · ")}{c.titre || c.ville ? " · " : ""}candidat au poste « {a.titre} » · réf. {a.reference}</div>
         <BoutonCv c={c} />
-        {!c.aProfil && <p className="pa" style={{ marginTop: "var(--s3)" }}>Ce candidat n’a pas encore rempli son profil : le score ne peut rien mesurer.</p>}
-        <h3>Ce que tu recherches</h3>
-        <Jauges parts={e.poste} />
+        <h3>Compatibilité avec le poste</h3>
+        <Compatibilite e={e} />
         <h3>Ce que le candidat recherche</h3>
-        <Jauges parts={e.candidat} />
-        <p style={{ fontSize: "var(--t-xs)", color: "var(--ink-3)", margin: "var(--s3) 0 0" }}>
-          {e.score === null ? "Compatibilité inconnue : aucun critère mesurable." : `Compatibilité ${e.score} % — le plus faible des deux côtés, jamais la moyenne.`}{" "}
-          Confiance {conf(e.confiance)}, {e.confiance} % des critères renseignés.
-        </p>
+        <Criteres parts={cr.parts} />
+        {cr.non.length > 0 && (<>
+          <b style={{ color: "var(--no)", fontSize: "var(--t-sm)", display: "block", marginTop: "var(--s3)" }}>Hors de ses critères — tu peux le retenir quand même</b>
+          <ul className="liste">{cr.non.map((x) => <li key={x}>{x}</li>)}</ul></>)}
       </div>
       <div className="col-p">
-        <h3>Pourquoi ce score</h3>
-        <div className="deux">
-          <div><b style={{ color: "var(--yes)", fontSize: "var(--t-sm)" }}>Ce qui colle</b>
-            <ul>{(e.oui.length ? e.oui : ["Rien de mesurable encore"]).map((x) => <li key={x}>{x}</li>)}</ul></div>
-          <div><b style={{ color: "var(--accent)", fontSize: "var(--t-sm)" }}>À vérifier</b>
-            <ul>{(e.att.length ? e.att : ["Rien à signaler"]).map((x) => <li key={x}>{x}</li>)}</ul></div>
-        </div>
-        {e.non.length > 0 && (<>
-          <b style={{ color: "var(--no)", fontSize: "var(--t-sm)" }}>Ne colle pas avec ses critères — tu peux le retenir quand même</b>
-          <ul className="liste">{e.non.map((x) => <li key={x}>{x}</li>)}</ul></>)}
-        {a.competences.length > 0 && (<>
-          <h3>Ce que l’AVP demande ({e.ok.length}/{a.competences.length} chez le candidat)</h3>
-          <ul className="liste competences">
-            {a.competences.map((x) => <li key={x} className={e.ok.includes(x) ? "has" : undefined}>{x}</li>)}
-          </ul>
-        </>)}
+        <Pourquoi e={e} />
         <h3>Le parcours</h3>
         {c.experiences.length + c.formations.length === 0
           ? <p className="pa">Aucune expérience ni formation renseignée.</p>
@@ -114,8 +170,9 @@ interface CarteProps {
   onDecide?: (ok: boolean) => void; onRetour?: () => void; onDetail?: () => void;
 }
 
-function Carte({ c, a, profondeur, peutRevenir, onDecide, onRetour, onDetail }: CarteProps) {
-  const e = evalue(c, a);
+function Carte({ k, c, a, profondeur, peutRevenir, onDecide, onRetour, onDetail }: CarteProps) {
+  const e = useMatching(k, c, a);
+  const cr = criteres(c, a);
   /* Le glissé, comme l'app candidat : la capture du pointeur n'est prise
      qu'après un vrai mouvement horizontal, sinon elle détourne le clic des boutons. */
   const depart = useRef<{ x: number; y: number } | null>(null);
@@ -156,9 +213,11 @@ function Carte({ c, a, profondeur, peutRevenir, onDecide, onRetour, onDetail }: 
     : dx ? `translateX(${dx}px) rotate(${dx / 22}deg)` : `translateY(${profondeur * 8}px) scale(${1 - profondeur * 0.03})`;
   const stop = (ev: React.PointerEvent) => ev.stopPropagation();
 
-  const autres = c.competences.filter((x) => !demandee(x, a));
-  const vise = e.candidat.find((p) => p.cle === "Métier visé")?.v === 100;
-  const zone = e.candidat.find((p) => p.cle === "Lieu")?.v === 100;
+  const vise = cr.parts.find((p) => p.cle === "Métier visé")?.v === 100;
+  const zone = cr.parts.find((p) => p.cle === "Lieu")?.v === 100;
+  // Les compétences du candidat que le matching a reconnues dans le poste (ses points forts) passent en vert.
+  const reconnues = e.etat === "ok" ? e.m.pointsForts.map((p) => (p.phraseCv ?? "").toLowerCase()) : [];
+  const vue = (x: string) => reconnues.some((r) => r.includes(x.toLowerCase()));
   return (
     <article className="card" aria-hidden={profondeur > 0 || undefined} inert={profondeur > 0}
       style={{ transform, zIndex: 10 - profondeur, transition: lache ? "transform .22s var(--ease)" : undefined,
@@ -172,14 +231,18 @@ function Carte({ c, a, profondeur, peutRevenir, onDecide, onRetour, onDetail }: 
           <div className="hero-top">
             <button type="button" className="score score-btn" onPointerDown={stop}
               onClick={(ev) => { ev.stopPropagation(); onDetail?.(); }} aria-label="Voir le détail du score">
-              {e.score === null
-                ? <><span className="gauge" /><span className="v">?</span> compatibilité inconnue</>
-                : <><span className="gauge"><b style={{ width: `${e.score}%`, background: teinte(e.score) }} /></span>
-                    <span className="v" style={{ color: teinte(e.score) }}>{e.score} %</span> compatible</>}
+              {e.etat === "ok"
+                ? <><span className="gauge"><b style={{ width: `${e.m.pourcentage}%`, background: couleurNiveau(e.m.niveau) }} /></span>
+                    <span className="v" style={{ color: couleurNiveau(e.m.niveau) }}>{e.m.pourcentage} %</span> {e.m.libelle.toLowerCase()}</>
+                : e.etat === "attente" ? <><Spinner /> calcul du score…</>
+                : <><span className="gauge" /><span className="v">?</span> compatibilité indisponible</>}
             </button>
-            {e.non.length > 0 && <span className="badge-pass">hors de ses critères</span>}
+            {cr.non.length > 0 && <span className="badge-pass">hors de ses critères</span>}
           </div>
-          <div className="conf">confiance {conf(e.confiance)} · {e.confiance} % des critères renseignés</div>
+          <div className="conf">
+            {e.etat === "ok" ? `${e.m.couvertes}/${e.m.nbCompetences} compétences du poste couvertes${e.m.fiable ? "" : " · peu fiable"}`
+              : e.etat === "erreur" ? e.message : e.etat === "vide" ? "pas de CV à comparer" : " "}
+          </div>
           <h2 className="role">{nom(c)}</h2>
           <div className="org">{[c.titre, c.ville].filter(Boolean).join(" · ") || c.email}</div>
           <div className="cles">
@@ -191,14 +254,11 @@ function Carte({ c, a, profondeur, peutRevenir, onDecide, onRetour, onDetail }: 
           </div>
         </div>
         <div className="pagebox">
-          <div className="page-lead">
-            {a.competences.length ? `Compétences · ${e.ok.length}/${a.competences.length} attendues par l’AVP` : "Compétences"}
-          </div>
+          <div className="page-lead">Compétences</div>
           <div className="page-body">
             <div className="tags">
               {c.competences.length === 0 && <span className="doux">Aucune compétence renseignée</span>}
-              {c.competences.filter((x) => !autres.includes(x)).map((x) => <span key={x} className="has">{x}</span>)}
-              {autres.map((x) => <span key={x}>{x}</span>)}
+              {c.competences.map((x) => <span key={x} className={vue(x) ? "has" : undefined}>{x}</span>)}
             </div>
           </div>
         </div>
@@ -361,14 +421,14 @@ export default function Swipe({ candidatures, candidats, avp, attente, decider, 
       </div>
 
       {courante && (
-        <aside className="side panneau" id="side"><Detail c={courante.c} a={courante.a} e={evalue(courante.c, courante.a)} /></aside>
+        <aside className="side panneau" id="side"><Detail k={courante.k} c={courante.c} a={courante.a} /></aside>
       )}
 
       {feuille && courante && (
         <div className="sheet" onClick={() => setFeuille(false)}>
           <div className="sheet-box" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <div className="poignee" />
-            <div className="panneau"><Detail c={courante.c} a={courante.a} e={evalue(courante.c, courante.a)} /></div>
+            <div className="panneau"><Detail k={courante.k} c={courante.c} a={courante.a} /></div>
             <div className="btns" style={{ marginTop: "var(--s5)" }}>
               <button className="btn primaire" onClick={() => setFeuille(false)}>Fermer</button>
             </div>

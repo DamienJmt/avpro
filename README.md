@@ -19,6 +19,7 @@ Comme l'app candidat, l'espace recruteur n'a ni base ni API à lui : tout vient 
 | AVP | `GET /avp` |
 | Swipe, Candidats | `GET /candidatures`, `GET /profils` (CV JSON Resume + `meta.criteres` écrits par l'app candidat), `GET /profils/{id}/cv` |
 | Entretien à programmer | `PATCH /candidatures/{id}/entretien-a-prog` `{ entretienAProg }` |
+| Compatibilité | service de matching : `POST /v1/score` `{ reference, cv }` |
 | Présélectionner / rejeter | `POST /swipes/recruteurs/candidature/{id}` `{ estLike }` : `VALIDEE` / `REJETEE`, **définitif** |
 
 - **CORS** : leur serveur n'envoie pas d'en-têtes CORS. En développement, Vite relaie `/api-equipe/*` vers eux
@@ -29,10 +30,16 @@ Comme l'app candidat, l'espace recruteur n'a ni base ni API à lui : tout vient 
 - **Statuts** : `EN_ATTENTE` → à traiter, `VALIDEE` → présélectionné, `REJETEE` → rejetée, `ANNULEE` → retirée par le candidat.
 - **Entretien** : booléen `entretienAProg` de la candidature, posé ou retiré par `PATCH /candidatures/{id}/entretien-a-prog`.
   Affiché « Entretien » sur une candidature `VALIDEE`.
-- **Score** (`src/scoring.ts`) : calculé ici, faute de module de matching dans l'API. Le plus faible des deux côtés,
-  jamais la moyenne. Les compétences de l'AVP (savoir-faire, connaissances) sont rapprochées par le texte de celles
-  du candidat ; expérience et formation demandées sont lues dans le texte de l'AVP et souvent absentes (« inconnu »).
-  Pas de critère salaire : les AVP n'en donnent pas.
+- **Compatibilité** (`src/matching.ts`) : calculée par le service de matching de l'équipe (MS5, Jo-Michel),
+  `POST /v1/score` sur https://myz0-cv-matching.hf.space/docs : un CV (JSON Resume) face à la référence d'un AVP.
+  Affiché : la part des compétences du poste couvertes, le libellé, les points forts, ce qui est à vérifier, les
+  savoir-être et les prérequis. Le CV envoyé est construit par `api.ts` (`cvMatching`) **sans l'identité** du
+  candidat ; les formats courts des comptes de démonstration sont convertis en JSON Resume. Scores demandés à
+  l'affichage, trois à la fois, gardés pour la session (vidés par « Actualiser »).
+- **Clé du matching** : le service exige `X-API-Key`. La mettre dans `.env.local` (`MATCHING_API_KEY=…`, voir
+  `.env.example`) : le proxy de développement l'ajoute, elle n'est jamais dans le code du navigateur.
+- **Critères du candidat** (`src/scoring.ts`) : métier visé, contrat, zone, disponibilité, saisis dans l'app
+  candidat. Affichés à côté de la compatibilité (« hors de ses critères »), ils ne font pas de score.
 - **Profil** : « Mon compte » repris de l'app candidat : adresse du compte, changement de mot de passe par code
   (`/auth/forgot-password` puis `/auth/reset-password`). L'API ne permet pas de changer d'adresse.
 

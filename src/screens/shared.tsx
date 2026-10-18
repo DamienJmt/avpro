@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Avp, Candidat, Candidature, Statut } from "../types";
-import { evalue } from "../scoring";
+import { couleurNiveau, useMatching } from "../matching";
 
 /** Une décision prise mais pas encore envoyée : annulable jusqu'à l'échéance. */
 export interface EnAttente { id: number; ok: boolean; echeance: number }
@@ -18,13 +18,18 @@ export interface Ctx {
 export const find = <T extends { id: number }>(l: T[], id: number) => l.find((x) => x.id === id);
 export const Icone = ({ n }: { n: string }) => <svg aria-hidden="true"><use href={`#i-${n}`} /></svg>;
 export const teinte = (q: number) => (q >= 75 ? "var(--yes)" : q >= 50 ? "var(--accent)" : "var(--no)");
-export const conf = (v: number) => (v >= 90 ? "élevée" : v >= 60 ? "moyenne" : "faible");
 export const initiales = (c?: Candidat) => (c ? `${c.prenom[0] ?? ""}${c.nom[0] ?? ""}`.toUpperCase() || "?" : "?");
 export const nom = (c?: Candidat) => (c ? `${c.prenom} ${c.nom}`.trim() || c.email : "Candidat inconnu");
-export const scoreDe = (k: Candidature, candidats: Candidat[], avp: Avp[]) => {
-  const c = find(candidats, k.candidatId), a = find(avp, k.avpId);
-  return c && a ? evalue(c, a).score : null;   // null : rien de mesurable, affiché « – »
-};
+/** La case « score » des listes : le pourcentage du service de matching, « … » pendant le calcul, « – » sinon. */
+export function CaseScore({ k, candidats, avp }: { k: Candidature; candidats: Candidat[]; avp: Avp[] }) {
+  const e = useMatching(k, find(candidats, k.candidatId), find(avp, k.avpId));
+  const aide = e.etat === "ok" ? e.m.libelle : e.etat === "erreur" ? e.message : e.etat === "vide" ? "Pas de CV à comparer" : "Calcul en cours";
+  return (
+    <div className="sc" title={aide} style={e.etat === "ok" ? { color: couleurNiveau(e.m.niveau) } : undefined}>
+      {e.etat === "ok" ? `${e.m.pourcentage} %` : e.etat === "attente" ? "…" : "–"}<small>COMPAT.</small>
+    </div>
+  );
+}
 export const titreAvp = (k: Candidature, avp: Avp[]) => find(avp, k.avpId)?.titre ?? k.avpTitre ?? "Poste inconnu";
 
 export const LIBELLE: Record<Statut, string> = {

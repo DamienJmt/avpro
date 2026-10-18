@@ -35,6 +35,8 @@ export interface Candidat {
   metiersOpt: string[]; metiersVises: string[]; contratsVises: string[]; zonesVisees: string[];
   salaireMin: number | null;
   aProfil: boolean; aCv: boolean;
+  /** Son CV au format JSON Resume, sans identité, tel qu'envoyé au service de matching ; null si vide. */
+  cvMatching: Record<string, unknown> | null;
 }
 
 /** `retiree` : le candidat a annulé sa candidature (ANNULEE dans l'API). */
